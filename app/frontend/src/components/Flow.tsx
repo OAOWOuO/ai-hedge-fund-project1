@@ -13,14 +13,15 @@ import {
   useNodesState
 } from '@xyflow/react';
 import { useTheme } from 'next-themes';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import '@xyflow/react/dist/style.css';
 
 import { useFlowContext } from '@/contexts/flow-context';
 import { useEnhancedFlowActions } from '@/hooks/use-enhanced-flow-actions';
 import { useFlowHistory } from '@/hooks/use-flow-history';
-import { useFlowKeyboardShortcuts, useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useDeleteKeyboardShortcut, useFlowKeyboardShortcuts, useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { CustomControls } from './custom-controls';
 import { useToastManager } from '@/hooks/use-toast-manager';
 import { AppNode } from '@/nodes/types';
 import { edgeTypes } from '../edges';
@@ -228,7 +229,36 @@ export function Flow({ className = '' }: FlowProps) {
       },
     ],
   });
-  
+
+  // Compute whether there are selected nodes or edges
+  const hasSelection = useMemo(() => {
+    return nodes.some(n => n.selected) || edges.some(e => e.selected);
+  }, [nodes, edges]);
+
+  // Delete selected nodes and edges
+  const onDeleteSelected = useCallback(() => {
+    const selectedNodeIds = nodes.filter(n => n.selected).map(n => n.id);
+
+    // Remove selected nodes
+    setNodes(nodes.filter(n => !n.selected));
+
+    // Remove selected edges AND edges connected to deleted nodes
+    setEdges(edges.filter(e =>
+      !e.selected &&
+      !selectedNodeIds.includes(e.source) &&
+      !selectedNodeIds.includes(e.target)
+    ));
+  }, [nodes, edges, setNodes, setEdges]);
+
+  // Clear all nodes and edges
+  const onClearAll = useCallback(() => {
+    setNodes([]);
+    setEdges([]);
+  }, [setNodes, setEdges]);
+
+  // Add delete keyboard shortcut
+  useDeleteKeyboardShortcut(onDeleteSelected, hasSelection);
+
   // Initialize the flow when it first renders
   const onInit = useCallback(() => {
     if (!isInitialized) {
@@ -305,7 +335,16 @@ export function Flow({ className = '' }: FlowProps) {
             color={gridColor}
             style={backgroundStyle}
           />
-          {/* <CustomControls onReset={resetFlow} /> */}
+          <CustomControls
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onDeleteSelected={onDeleteSelected}
+            hasSelection={hasSelection}
+            onClearAll={onClearAll}
+            hasNodes={nodes.length > 0}
+          />
         </ReactFlow>
       </TooltipProvider>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 
 interface KeyboardShortcut {
   key: string;
@@ -162,4 +162,34 @@ export function useLayoutKeyboardShortcuts(
   }
 
   useKeyboardShortcuts({ shortcuts });
+}
+
+// Hook for delete keyboard shortcut (Delete/Backspace keys)
+export function useDeleteKeyboardShortcut(
+  onDeleteSelected: () => void,
+  hasSelection: boolean
+) {
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        const target = event.target as HTMLElement;
+        // Don't delete when typing in an input or textarea
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+        if (hasSelection) {
+          event.preventDefault();
+          onDeleteSelected();
+        }
+      }
+    },
+    [onDeleteSelected, hasSelection]
+  );
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
 } 
