@@ -1,14 +1,14 @@
 """
-AI Hedge Fund Terminal v2.0
-Professional Trading Dashboard - QA Fixed Version
+AI Hedge Fund Terminal v3.0
+Professional Trading Dashboard - Fixed Capital Allocation & Sizing Logic
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import hashlib
-from datetime import datetime, timedelta
-from dataclasses import dataclass
+from datetime import datetime
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 import json
 
@@ -20,82 +20,73 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ============== CLEAN CSS - High Contrast, Accessible ==============
+# ============== CSS ==============
 st.markdown("""
 <style>
-    /* Base */
     .main { background: #0d1117; }
     .stApp { background: #0d1117; }
     #MainMenu, footer, header { visibility: hidden; }
 
-    /* Typography - ensure readability */
-    body { color: #e6edf3; }
-
-    /* High contrast text */
-    .text-primary { color: #e6edf3; }
-    .text-secondary { color: #8b949e; }
-    .text-muted { color: #6e7681; }
-
-    /* Status colors with labels (not color-only) */
-    .status-success { color: #3fb950; }
-    .status-danger { color: #f85149; }
-    .status-warning { color: #d29922; }
-    .status-info { color: #58a6ff; }
-
-    /* Cards with proper contrast */
-    .info-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 8px 0;
+    /* Fix button colors - green for primary action */
+    .stButton > button[kind="primary"] {
+        background-color: #238636 !important;
+        border-color: #238636 !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #2ea043 !important;
+        border-color: #2ea043 !important;
     }
 
-    /* Metric display */
-    .metric-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: #8b949e;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
-    }
-    .metric-value {
-        font-size: 24px;
-        font-weight: 700;
-        color: #e6edf3;
-    }
-    .metric-value-sm {
-        font-size: 16px;
-        font-weight: 600;
-        color: #e6edf3;
-    }
-
-    /* Data source badge */
-    .data-source {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 8px;
-        background: #21262d;
-        border: 1px solid #30363d;
+    /* High contrast */
+    .constraint-binding {
+        background: #3d1f1f;
+        border-left: 3px solid #f85149;
+        padding: 8px 12px;
+        margin: 4px 0;
         border-radius: 4px;
-        font-size: 11px;
-        color: #8b949e;
     }
-    .data-source .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
+    .constraint-ok {
+        background: #1f3d1f;
+        border-left: 3px solid #3fb950;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border-radius: 4px;
     }
-    .data-source .dot.delayed { background: #d29922; }
-    .data-source .dot.live { background: #3fb950; }
-
-    /* Override Streamlit defaults for dark theme */
-    .stDataFrame { background: #161b22; }
-    div[data-testid="stMetricValue"] { color: #e6edf3; }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ============== ALLOCATION MODES ==============
+ALLOCATION_MODES = {
+    "fully_allocated": {
+        "name": "Fully Allocated",
+        "desc": "Deploy most capital across positions (target ~90-95% invested)",
+        "target_deployment": 0.95,
+        "min_confidence": 30,
+        "allow_fractional": False
+    },
+    "risk_targeted": {
+        "name": "Risk Targeted",
+        "desc": "Size positions by confidence, may hold significant cash",
+        "target_deployment": None,  # No target, let confidence drive
+        "min_confidence": 50,
+        "allow_fractional": False
+    },
+    "conservative": {
+        "name": "Conservative",
+        "desc": "Only high-conviction trades, expect large cash buffer",
+        "target_deployment": None,
+        "min_confidence": 65,
+        "allow_fractional": False
+    },
+    "equal_weight": {
+        "name": "Equal Weight",
+        "desc": "Split capital equally among all BUY/SHORT signals",
+        "target_deployment": 0.90,
+        "min_confidence": 40,
+        "allow_fractional": False
+    }
+}
 
 
 # ============== DATA CLASSES ==============
@@ -107,250 +98,157 @@ class StockData:
     change_pct: float
     name: str
     sector: str
-    market_cap: float
-    pe_ratio: float
-    beta: float
-    volume: int
-    high_52w: float
-    low_52w: float
     valid: bool
     timestamp: datetime
-    source: str  # "Yahoo Finance"
-    is_delayed: bool  # True = delayed, False = real-time
+    source: str = "Yahoo Finance"
+    is_delayed: bool = True
 
 
 @dataclass
-class AnalystSignal:
-    analyst_key: str
-    analyst_name: str
-    category: str
-    signal: str  # BULLISH, BEARISH, NEUTRAL
-    confidence: float  # 0-100
-    reasoning: str
-    key_factors: List[str]
+class PositionSizing:
+    allocated_budget: float      # How much $ was allocated to this ticker
+    shares: int                  # Integer shares
+    actual_notional: float       # shares * price (actual $ used)
+    remainder: float             # allocated - actual (lost to rounding)
+    pct_of_portfolio: float      # actual_notional / total_capital
 
 
 @dataclass
-class TickerRecommendation:
+class TradeInstruction:
     ticker: str
-    action: str  # BUY, SELL, SHORT, HOLD
+    action: str                  # BUY, SELL, SHORT, COVER
     shares: int
-    position_value: float
     entry_price: float
-    stop_loss: float
-    take_profit: float
+    notional: float
+    stop_loss_price: float
+    stop_loss_pct: float
+    take_profit_price: float
+    take_profit_pct: float
     time_horizon: str
+    reason: str
+
+
+@dataclass
+class TickerAnalysis:
+    ticker: str
+    stock_data: StockData
+    signal: str                  # BULLISH, BEARISH, NEUTRAL
     confidence: float
-    conviction: float
-    signals: List[AnalystSignal]
+    conviction: float            # % of analysts agreeing
     bullish_count: int
     bearish_count: int
     neutral_count: int
     thesis: str
     key_drivers: List[str]
     risks: List[str]
-    invalidation: str
+    analyst_signals: List[Dict]
+
+    # Position details
+    recommended_action: str      # BUY, SHORT, HOLD
+    sizing: Optional[PositionSizing] = None
+    trade: Optional[TradeInstruction] = None
+
+    # For holdings-aware
+    current_shares: int = 0
+    delta_shares: int = 0        # How many to buy/sell to reach target
 
 
 @dataclass
-class RiskParameters:
+class PortfolioAllocation:
+    total_capital: float
+    deployed_capital: float      # Sum of actual notional
+    cash_remaining: float
+    deployment_pct: float
+
+    # Breakdown
+    long_exposure: float
+    short_exposure: float
+    gross_exposure: float
+    net_exposure: float
+
+    # Rounding losses
+    total_rounding_remainder: float
+
+    # Constraints status
+    binding_constraints: List[str]
+
+    # Per-ticker
+    positions: Dict[str, TickerAnalysis] = field(default_factory=dict)
+
+
+@dataclass
+class RiskParams:
     max_position_pct: float
     stop_loss_pct: float
     take_profit_pct: float
-    confidence_threshold: float
-    max_sector_exposure: float
+    min_confidence: float
+    max_sector_pct: float
     leverage_cap: float
-    position_sizing_method: str
-    volatility_adjustment: bool
 
 
-@dataclass
-class AnalysisResult:
-    run_id: str
-    timestamp: datetime
-    status: str  # idle, running, success, error
-    error_message: Optional[str]
-    config: Dict[str, Any]
-    risk_params: RiskParameters
-    recommendations: Dict[str, TickerRecommendation]
-    summary: Dict[str, Any]
-    data_sources: List[Dict[str, Any]]
-
-
-# ============== ANALYST DEFINITIONS ==============
+# ============== ANALYSTS ==============
 ANALYST_CATEGORIES = {
     "Value Investors": {
-        "warren_buffett": {
-            "name": "Warren Buffett",
-            "desc": "Seeks durable competitive advantages (moats), quality management, reasonable valuations",
-            "output": "Long-term value assessment",
-            "weight": 1.0
-        },
-        "charlie_munger": {
-            "name": "Charlie Munger",
-            "desc": "Mental models, business quality, management integrity",
-            "output": "Quality & management score",
-            "weight": 1.0
-        },
-        "ben_graham": {
-            "name": "Benjamin Graham",
-            "desc": "Margin of safety, net-net value, conservative metrics",
-            "output": "Deep value score",
-            "weight": 1.0
-        },
-        "joel_greenblatt": {
-            "name": "Joel Greenblatt",
-            "desc": "Magic formula: high ROIC + high earnings yield",
-            "output": "Magic formula rank",
-            "weight": 1.0
-        },
+        "warren_buffett": {"name": "Warren Buffett", "desc": "Moats & quality"},
+        "charlie_munger": {"name": "Charlie Munger", "desc": "Mental models"},
+        "ben_graham": {"name": "Benjamin Graham", "desc": "Margin of safety"},
     },
     "Growth Investors": {
-        "peter_lynch": {
-            "name": "Peter Lynch",
-            "desc": "PEG ratio, growth at reasonable price, know what you own",
-            "output": "GARP score",
-            "weight": 1.0
-        },
-        "phil_fisher": {
-            "name": "Philip Fisher",
-            "desc": "Scuttlebutt method, management quality, growth potential",
-            "output": "Quality growth score",
-            "weight": 1.0
-        },
-        "cathie_wood": {
-            "name": "Cathie Wood",
-            "desc": "Disruptive innovation, exponential growth, long-term vision",
-            "output": "Innovation score",
-            "weight": 0.8  # Higher variance
-        },
+        "peter_lynch": {"name": "Peter Lynch", "desc": "GARP strategy"},
+        "cathie_wood": {"name": "Cathie Wood", "desc": "Disruptive innovation"},
     },
     "Macro & Tactical": {
-        "stanley_druckenmiller": {
-            "name": "S. Druckenmiller",
-            "desc": "Macro trends, asymmetric bets, position sizing",
-            "output": "Macro alignment",
-            "weight": 1.0
-        },
-        "ray_dalio": {
-            "name": "Ray Dalio",
-            "desc": "Economic machine, risk parity, all-weather approach",
-            "output": "Cycle positioning",
-            "weight": 1.0
-        },
-        "george_soros": {
-            "name": "George Soros",
-            "desc": "Reflexivity, market psychology, regime changes",
-            "output": "Sentiment regime",
-            "weight": 0.9
-        },
+        "stanley_druckenmiller": {"name": "S. Druckenmiller", "desc": "Macro trends"},
+        "ray_dalio": {"name": "Ray Dalio", "desc": "Economic cycles"},
     },
-    "Quantitative Agents": {
-        "fundamentals_agent": {
-            "name": "Fundamentals",
-            "desc": "Financial ratios, earnings quality, balance sheet health",
-            "output": "Fundamental score (0-100)",
-            "weight": 1.0
-        },
-        "technical_agent": {
-            "name": "Technical",
-            "desc": "Price patterns, momentum, support/resistance, indicators",
-            "output": "Technical score (0-100)",
-            "weight": 0.9
-        },
-        "sentiment_agent": {
-            "name": "Sentiment",
-            "desc": "News sentiment, social media, analyst ratings",
-            "output": "Sentiment score (-1 to +1)",
-            "weight": 0.8
-        },
-        "valuation_agent": {
-            "name": "Valuation",
-            "desc": "DCF, comparable analysis, sum-of-parts",
-            "output": "Fair value estimate",
-            "weight": 1.0
-        },
+    "Quantitative": {
+        "fundamentals_agent": {"name": "Fundamentals", "desc": "Financial ratios"},
+        "technical_agent": {"name": "Technical", "desc": "Price patterns"},
+        "sentiment_agent": {"name": "Sentiment", "desc": "News analysis"},
+        "valuation_agent": {"name": "Valuation", "desc": "DCF models"},
     },
 }
 
-
-def get_all_analysts() -> Dict[str, Dict]:
-    """Flatten all analysts into single dict."""
-    all_analysts = {}
-    for category, analysts in ANALYST_CATEGORIES.items():
-        for key, info in analysts.items():
-            all_analysts[key] = {**info, "category": category}
-    return all_analysts
-
-
-def calculate_risk_params(risk_level: float) -> RiskParameters:
-    """
-    Calculate risk parameters from risk tolerance level.
-
-    Risk Level 0.0 (Very Conservative) to 1.0 (Very Aggressive)
-
-    Parameters derived:
-    - Max Position Size: 5-25% of portfolio per position
-    - Stop Loss: 20-5% below entry
-    - Take Profit: 15-50% above entry
-    - Confidence Threshold: 70-40% (min confidence to act)
-    - Max Sector Exposure: 20-50%
-    - Leverage Cap: 1.0x-2.0x
-    """
-    return RiskParameters(
-        max_position_pct=round(5 + risk_level * 20, 1),
-        stop_loss_pct=round(20 - risk_level * 15, 1),
-        take_profit_pct=round(15 + risk_level * 35, 1),
-        confidence_threshold=round(70 - risk_level * 30, 0),
-        max_sector_exposure=round(20 + risk_level * 30, 0),
-        leverage_cap=round(1.0 + risk_level * 1.0, 2),
-        position_sizing_method="Fixed %" if risk_level < 0.4 else "Half-Kelly" if risk_level < 0.7 else "Kelly",
-        volatility_adjustment=risk_level < 0.6
-    )
+def get_all_analysts():
+    all_a = {}
+    for cat, analysts in ANALYST_CATEGORIES.items():
+        for k, v in analysts.items():
+            all_a[k] = {**v, "category": cat}
+    return all_a
 
 
 def fetch_stock_data(ticker: str) -> StockData:
-    """Fetch stock data with proper error handling and source tracking."""
-    timestamp = datetime.now()
-
+    """Fetch stock data."""
+    ts = datetime.now()
     try:
         import yfinance as yf
         stock = yf.Ticker(ticker)
         hist = stock.history(period="5d")
         info = stock.info
-
         if len(hist) >= 1:
-            current = float(hist['Close'].iloc[-1])
-            prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else current
-            change = current - prev
-            change_pct = (change / prev) * 100 if prev > 0 else 0
-
+            price = float(hist['Close'].iloc[-1])
+            prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else price
             return StockData(
-                ticker=ticker,
-                price=current,
-                change=change,
-                change_pct=change_pct,
-                name=info.get("shortName", ticker),
-                sector=info.get("sector", "Unknown"),
-                market_cap=info.get("marketCap", 0),
-                pe_ratio=info.get("trailingPE") or 0,
-                beta=info.get("beta") or 1.0,
-                volume=info.get("volume") or 0,
-                high_52w=info.get("fiftyTwoWeekHigh") or 0,
-                low_52w=info.get("fiftyTwoWeekLow") or 0,
-                valid=True,
-                timestamp=timestamp,
-                source="Yahoo Finance",
-                is_delayed=True  # Yahoo is delayed 15-20 min
+                ticker=ticker, price=price,
+                change=price-prev, change_pct=((price-prev)/prev*100) if prev > 0 else 0,
+                name=info.get("shortName", ticker), sector=info.get("sector", "Unknown"),
+                valid=True, timestamp=ts
             )
-    except Exception as e:
+    except:
         pass
+    return StockData(ticker=ticker, price=0, change=0, change_pct=0, name=ticker,
+                     sector="Unknown", valid=False, timestamp=ts)
 
-    return StockData(
-        ticker=ticker, price=0, change=0, change_pct=0,
-        name=ticker, sector="Unknown", market_cap=0, pe_ratio=0,
-        beta=1.0, volume=0, high_52w=0, low_52w=0,
-        valid=False, timestamp=timestamp, source="N/A", is_delayed=True
+
+def calculate_risk_params(risk_level: float) -> RiskParams:
+    """Calculate risk parameters."""
+    return RiskParams(
+        max_position_pct=15 + risk_level * 20,      # 15-35% per position
+        stop_loss_pct=15 - risk_level * 10,          # 15-5%
+        take_profit_pct=20 + risk_level * 30,        # 20-50%
+        min_confidence=60 - risk_level * 25,         # 60-35%
+        max_sector_pct=30 + risk_level * 20,         # 30-50%
+        leverage_cap=1.0 + risk_level * 1.0          # 1x-2x
     )
 
 
@@ -358,257 +256,321 @@ def run_analysis(
     tickers: List[str],
     analysts: List[str],
     risk_level: float,
-    investment_amount: float,
-    current_holdings: Dict[str, int]
-) -> AnalysisResult:
+    capital: float,
+    holdings: Dict[str, int],
+    allocation_mode: str
+) -> PortfolioAllocation:
     """
-    Run deterministic analysis.
-
-    The same inputs will ALWAYS produce the same outputs.
-    This is achieved via hash-based seeding.
+    Run analysis with CORRECT capital allocation.
     """
-    # Create deterministic run ID
-    config_str = json.dumps({
-        "tickers": sorted(tickers),
-        "analysts": sorted(analysts),
-        "risk_level": round(risk_level, 2),
-        "investment": investment_amount
-    }, sort_keys=True)
-    run_id = hashlib.sha256(config_str.encode()).hexdigest()[:12]
-
-    timestamp = datetime.now()
-    risk_params = calculate_risk_params(risk_level)
-
-    # Seed RNG for deterministic results
+    # Deterministic seed
+    config_str = f"{sorted(tickers)}{sorted(analysts)}{risk_level:.2f}{capital}{allocation_mode}"
     seed = int(hashlib.md5(config_str.encode()).hexdigest()[:8], 16)
     np.random.seed(seed)
 
-    recommendations = {}
-    data_sources = []
+    risk_params = calculate_risk_params(risk_level)
+    mode_config = ALLOCATION_MODES[allocation_mode]
+    all_analysts_info = get_all_analysts()
 
-    total_bullish = 0
-    total_bearish = 0
-    total_neutral = 0
-
-    all_analysts = get_all_analysts()
+    # Phase 1: Analyze all tickers
+    analyses: Dict[str, TickerAnalysis] = {}
 
     for ticker in tickers:
-        # Fetch real market data
         stock = fetch_stock_data(ticker)
 
-        if stock.valid:
-            data_sources.append({
-                "ticker": ticker,
-                "source": stock.source,
-                "timestamp": stock.timestamp.isoformat(),
-                "is_delayed": stock.is_delayed
-            })
-
-        # Generate signals from each selected analyst
-        signals = []
+        # Generate analyst signals
+        analyst_signals = []
         for analyst_key in analysts:
-            if analyst_key not in all_analysts:
+            if analyst_key not in all_analysts_info:
                 continue
+            info = all_analysts_info[analyst_key]
 
-            analyst_info = all_analysts[analyst_key]
-
-            # Deterministic signal generation
-            signal_seed = int(hashlib.md5(f"{analyst_key}{ticker}{seed}".encode()).hexdigest()[:8], 16)
-            np.random.seed(signal_seed)
-
-            # Base score
+            # Deterministic signal
+            sig_seed = int(hashlib.md5(f"{analyst_key}{ticker}{seed}".encode()).hexdigest()[:8], 16)
+            np.random.seed(sig_seed)
             score = np.random.uniform(-1, 1)
 
-            # Apply analyst bias
-            if analyst_info["category"] == "Value Investors":
-                score -= 0.1  # More conservative
-            elif analyst_key in ["cathie_wood"]:
-                score += 0.2  # More bullish on growth
+            # Analyst bias
+            if info["category"] == "Value Investors":
+                score -= 0.1
+            elif analyst_key == "cathie_wood":
+                score += 0.15
 
-            # Determine signal
             if score > 0.2:
-                signal_type = "BULLISH"
-                confidence = 50 + score * 40
-                factors = ["Positive momentum", "Favorable valuation", "Strong fundamentals"]
+                signal = "BULLISH"
+                conf = 55 + score * 35
             elif score < -0.2:
-                signal_type = "BEARISH"
-                confidence = 50 + abs(score) * 40
-                factors = ["Negative momentum", "Overvaluation concerns", "Weak fundamentals"]
+                signal = "BEARISH"
+                conf = 55 + abs(score) * 35
             else:
-                signal_type = "NEUTRAL"
-                confidence = 40 + np.random.uniform(0, 20)
-                factors = ["Mixed signals", "Wait for clearer direction"]
+                signal = "NEUTRAL"
+                conf = 45 + abs(score) * 15
 
-            confidence = min(95, max(30, confidence))
+            analyst_signals.append({
+                "analyst": info["name"],
+                "category": info["category"],
+                "signal": signal,
+                "confidence": min(95, max(35, conf))
+            })
 
-            signals.append(AnalystSignal(
-                analyst_key=analyst_key,
-                analyst_name=analyst_info["name"],
-                category=analyst_info["category"],
-                signal=signal_type,
-                confidence=confidence,
-                reasoning=f"{analyst_info['name']}'s {analyst_info['desc'].lower()} analysis",
-                key_factors=factors[:2]
-            ))
+        # Aggregate
+        bullish = sum(1 for s in analyst_signals if s["signal"] == "BULLISH")
+        bearish = sum(1 for s in analyst_signals if s["signal"] == "BEARISH")
+        neutral = len(analyst_signals) - bullish - bearish
+        total = len(analyst_signals)
 
-        # Aggregate signals
-        bullish = sum(1 for s in signals if s.signal == "BULLISH")
-        bearish = sum(1 for s in signals if s.signal == "BEARISH")
-        neutral = len(signals) - bullish - bearish
+        avg_conf = np.mean([s["confidence"] for s in analyst_signals]) if analyst_signals else 50
 
-        total_bullish += bullish
-        total_bearish += bearish
-        total_neutral += neutral
-
-        # Calculate weighted confidence
-        total_signals = len(signals)
-        if total_signals == 0:
-            continue
-
-        avg_confidence = np.mean([s.confidence for s in signals])
-        bull_ratio = bullish / total_signals
-        bear_ratio = bearish / total_signals
-
-        # Determine action based on risk parameters
-        action = "HOLD"
-        conviction = 0.5
-
-        if avg_confidence >= risk_params.confidence_threshold:
-            if bull_ratio > 0.5 and bull_ratio > bear_ratio:
-                action = "BUY"
-                conviction = bull_ratio
-            elif bear_ratio > 0.5 and bear_ratio > bull_ratio:
-                action = "SHORT"
-                conviction = bear_ratio
-
-        # Position sizing
-        if action != "HOLD" and stock.valid and stock.price > 0:
-            max_position = investment_amount * (risk_params.max_position_pct / 100)
-            position_value = max_position * conviction * (avg_confidence / 100)
-            shares = int(position_value / stock.price)
-
-            # Calculate stop loss and take profit
-            if action == "BUY":
-                stop_loss = stock.price * (1 - risk_params.stop_loss_pct / 100)
-                take_profit = stock.price * (1 + risk_params.take_profit_pct / 100)
-            else:  # SHORT
-                stop_loss = stock.price * (1 + risk_params.stop_loss_pct / 100)
-                take_profit = stock.price * (1 - risk_params.take_profit_pct / 100)
+        # Determine signal
+        if bullish > bearish and bullish > neutral:
+            overall_signal = "BULLISH"
+            conviction = bullish / total * 100 if total > 0 else 0
+        elif bearish > bullish and bearish > neutral:
+            overall_signal = "BEARISH"
+            conviction = bearish / total * 100 if total > 0 else 0
         else:
-            shares = 0
-            position_value = 0
-            stop_loss = 0
-            take_profit = 0
+            overall_signal = "NEUTRAL"
+            conviction = neutral / total * 100 if total > 0 else 0
 
-        # Generate thesis
+        # Recommended action
+        if overall_signal == "BULLISH" and avg_conf >= mode_config["min_confidence"]:
+            action = "BUY"
+        elif overall_signal == "BEARISH" and avg_conf >= mode_config["min_confidence"]:
+            action = "SHORT"
+        else:
+            action = "HOLD"
+
+        # Thesis
         if action == "BUY":
-            thesis = f"Bullish consensus ({bullish}/{total_signals} analysts) with {avg_confidence:.0f}% avg confidence suggests long position."
-            drivers = ["Positive analyst sentiment", f"{bullish} bullish signals", "Confidence above threshold"]
-            risks = ["Market volatility", "Sector rotation risk", "Earnings uncertainty"]
-            invalidation = f"Exit if price falls below ${stop_loss:.2f} (stop loss)"
+            thesis = f"Bullish consensus ({bullish}/{total}) with {avg_conf:.0f}% confidence exceeds {mode_config['min_confidence']}% threshold."
+            drivers = [f"{bullish} analysts bullish", "Confidence above threshold", "Positive momentum indicators"]
+            risks = ["Market volatility", "Sector rotation", "Earnings risk"]
         elif action == "SHORT":
-            thesis = f"Bearish consensus ({bearish}/{total_signals} analysts) with {avg_confidence:.0f}% avg confidence suggests short position."
-            drivers = ["Negative analyst sentiment", f"{bearish} bearish signals", "Overvaluation signals"]
-            risks = ["Short squeeze risk", "Unexpected positive catalysts", "Market rally"]
-            invalidation = f"Cover if price rises above ${stop_loss:.2f} (stop loss)"
+            thesis = f"Bearish consensus ({bearish}/{total}) with {avg_conf:.0f}% confidence exceeds {mode_config['min_confidence']}% threshold."
+            drivers = [f"{bearish} analysts bearish", "Overvaluation signals", "Negative momentum"]
+            risks = ["Short squeeze risk", "Unexpected catalysts", "Timing risk"]
         else:
-            thesis = f"Mixed signals ({bullish}B/{neutral}N/{bearish}B) - insufficient conviction for position."
-            drivers = ["Conflicting analyst views", "Confidence below threshold"]
-            risks = ["Missing opportunity", "Delayed entry"]
-            invalidation = "Re-evaluate when consensus emerges"
+            thesis = f"No clear consensus ({bullish}B/{neutral}N/{bearish}Be) or confidence {avg_conf:.0f}% below {mode_config['min_confidence']}% threshold."
+            drivers = ["Mixed signals", "Insufficient conviction"]
+            risks = ["Opportunity cost", "Missing entry point"]
 
-        recommendations[ticker] = TickerRecommendation(
+        analyses[ticker] = TickerAnalysis(
             ticker=ticker,
-            action=action,
-            shares=shares,
-            position_value=position_value,
-            entry_price=stock.price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            time_horizon="1-3 months" if risk_level < 0.5 else "1-4 weeks",
-            confidence=avg_confidence,
-            conviction=conviction * 100,
-            signals=signals,
+            stock_data=stock,
+            signal=overall_signal,
+            confidence=avg_conf,
+            conviction=conviction,
             bullish_count=bullish,
             bearish_count=bearish,
             neutral_count=neutral,
             thesis=thesis,
             key_drivers=drivers,
             risks=risks,
-            invalidation=invalidation
+            analyst_signals=analyst_signals,
+            recommended_action=action,
+            current_shares=holdings.get(ticker, 0)
         )
 
-    # Summary
-    total = total_bullish + total_bearish + total_neutral
-    sentiment_score = ((total_bullish - total_bearish) / total * 100) if total > 0 else 0
+    # Phase 2: Capital Allocation
+    actionable = {t: a for t, a in analyses.items() if a.recommended_action != "HOLD" and a.stock_data.valid}
 
-    summary = {
-        "total_signals": total,
-        "bullish": total_bullish,
-        "bearish": total_bearish,
-        "neutral": total_neutral,
-        "sentiment": "BULLISH" if sentiment_score > 10 else "BEARISH" if sentiment_score < -10 else "MIXED",
-        "sentiment_score": sentiment_score,
-        "analysts_used": len(analysts),
-        "tickers_analyzed": len(tickers)
-    }
+    if not actionable:
+        # No actionable signals
+        return PortfolioAllocation(
+            total_capital=capital,
+            deployed_capital=0,
+            cash_remaining=capital,
+            deployment_pct=0,
+            long_exposure=0,
+            short_exposure=0,
+            gross_exposure=0,
+            net_exposure=0,
+            total_rounding_remainder=0,
+            binding_constraints=["No actionable signals (all HOLD or below confidence threshold)"],
+            positions=analyses
+        )
 
-    return AnalysisResult(
-        run_id=run_id,
-        timestamp=timestamp,
-        status="success",
-        error_message=None,
-        config={
-            "tickers": tickers,
-            "analysts": analysts,
-            "risk_level": risk_level,
-            "investment_amount": investment_amount,
-            "holdings": current_holdings
-        },
-        risk_params=risk_params,
-        recommendations=recommendations,
-        summary=summary,
-        data_sources=data_sources
+    # Allocation strategy based on mode
+    target_deployment = mode_config["target_deployment"]
+
+    if allocation_mode == "equal_weight":
+        # Equal weight among actionable
+        n_positions = len(actionable)
+        per_position_budget = (capital * target_deployment) / n_positions
+
+        for ticker, analysis in actionable.items():
+            # Cap at max position size
+            max_budget = capital * (risk_params.max_position_pct / 100)
+            allocated = min(per_position_budget, max_budget)
+
+            price = analysis.stock_data.price
+            shares = int(allocated / price)
+            actual_notional = shares * price
+            remainder = allocated - actual_notional
+
+            analysis.sizing = PositionSizing(
+                allocated_budget=allocated,
+                shares=shares,
+                actual_notional=actual_notional,
+                remainder=remainder,
+                pct_of_portfolio=(actual_notional / capital * 100)
+            )
+
+    elif allocation_mode == "fully_allocated":
+        # Allocate proportionally to conviction, targeting ~95% deployment
+        total_conviction = sum(a.conviction for a in actionable.values())
+        target_deploy = capital * target_deployment
+
+        for ticker, analysis in actionable.items():
+            # Weight by conviction
+            weight = analysis.conviction / total_conviction if total_conviction > 0 else 1/len(actionable)
+            allocated = target_deploy * weight
+
+            # Cap at max position size
+            max_budget = capital * (risk_params.max_position_pct / 100)
+            allocated = min(allocated, max_budget)
+
+            price = analysis.stock_data.price
+            shares = int(allocated / price)
+            actual_notional = shares * price
+            remainder = allocated - actual_notional
+
+            analysis.sizing = PositionSizing(
+                allocated_budget=allocated,
+                shares=shares,
+                actual_notional=actual_notional,
+                remainder=remainder,
+                pct_of_portfolio=(actual_notional / capital * 100)
+            )
+
+    else:  # risk_targeted or conservative
+        # Size by confidence * conviction
+        for ticker, analysis in actionable.items():
+            # Budget = capital * max_position% * (confidence/100) * (conviction/100)
+            confidence_factor = analysis.confidence / 100
+            conviction_factor = analysis.conviction / 100
+
+            allocated = capital * (risk_params.max_position_pct / 100) * confidence_factor * conviction_factor
+
+            price = analysis.stock_data.price
+            shares = int(allocated / price)
+            actual_notional = shares * price
+            remainder = allocated - actual_notional
+
+            analysis.sizing = PositionSizing(
+                allocated_budget=allocated,
+                shares=shares,
+                actual_notional=actual_notional,
+                remainder=remainder,
+                pct_of_portfolio=(actual_notional / capital * 100)
+            )
+
+    # Phase 3: Generate Trade Instructions
+    for ticker, analysis in analyses.items():
+        if analysis.sizing and analysis.sizing.shares > 0:
+            price = analysis.stock_data.price
+            action = analysis.recommended_action
+
+            # CORRECT stop loss / take profit for LONG vs SHORT
+            if action == "BUY":
+                sl_price = price * (1 - risk_params.stop_loss_pct / 100)
+                tp_price = price * (1 + risk_params.take_profit_pct / 100)
+                sl_pct = -risk_params.stop_loss_pct
+                tp_pct = risk_params.take_profit_pct
+            else:  # SHORT
+                sl_price = price * (1 + risk_params.stop_loss_pct / 100)  # ABOVE entry for short
+                tp_price = price * (1 - risk_params.take_profit_pct / 100)  # BELOW entry for short
+                sl_pct = risk_params.stop_loss_pct  # Loss if price goes UP
+                tp_pct = -risk_params.take_profit_pct  # Profit if price goes DOWN
+
+            # Delta from current holdings
+            target_shares = analysis.sizing.shares if action == "BUY" else -analysis.sizing.shares
+            current = analysis.current_shares
+            delta = target_shares - current
+
+            if delta > 0:
+                trade_action = "BUY"
+            elif delta < 0:
+                trade_action = "SELL" if current > 0 else "SHORT"
+            else:
+                trade_action = "HOLD"
+
+            analysis.delta_shares = delta
+
+            analysis.trade = TradeInstruction(
+                ticker=ticker,
+                action=trade_action,
+                shares=abs(delta),
+                entry_price=price,
+                notional=abs(delta) * price,
+                stop_loss_price=sl_price,
+                stop_loss_pct=sl_pct,
+                take_profit_price=tp_price,
+                take_profit_pct=tp_pct,
+                time_horizon="1-3 months" if risk_level < 0.5 else "2-6 weeks",
+                reason=f"{'Initiate' if current == 0 else 'Adjust'} position to target"
+            )
+
+    # Phase 4: Calculate totals
+    long_exp = sum(a.sizing.actual_notional for a in analyses.values()
+                   if a.sizing and a.recommended_action == "BUY")
+    short_exp = sum(a.sizing.actual_notional for a in analyses.values()
+                    if a.sizing and a.recommended_action == "SHORT")
+    gross_exp = long_exp + short_exp
+    net_exp = long_exp - short_exp
+    total_remainder = sum(a.sizing.remainder for a in analyses.values() if a.sizing)
+
+    cash = capital - gross_exp
+    deployment_pct = (gross_exp / capital * 100) if capital > 0 else 0
+
+    # Identify binding constraints
+    binding = []
+    if deployment_pct < 50:
+        if allocation_mode in ["risk_targeted", "conservative"]:
+            binding.append(f"Risk-targeted mode: Confidence-based sizing deployed {deployment_pct:.1f}%")
+        else:
+            binding.append(f"Limited actionable signals: Only {len(actionable)} of {len(tickers)} tickers met confidence threshold")
+
+    if any(a.sizing and a.sizing.pct_of_portfolio >= risk_params.max_position_pct * 0.95 for a in analyses.values()):
+        binding.append(f"Max position size cap ({risk_params.max_position_pct:.0f}%) binding on some positions")
+
+    if not binding:
+        binding.append("No constraints binding - full allocation achieved")
+
+    return PortfolioAllocation(
+        total_capital=capital,
+        deployed_capital=gross_exp,
+        cash_remaining=cash,
+        deployment_pct=deployment_pct,
+        long_exposure=long_exp,
+        short_exposure=short_exp,
+        gross_exposure=gross_exp,
+        net_exposure=net_exp,
+        total_rounding_remainder=total_remainder,
+        binding_constraints=binding,
+        positions=analyses
     )
 
 
 # ============== SESSION STATE ==============
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "Signals"
-if "analysis_result" not in st.session_state:
-    st.session_state.analysis_result = None
-if "run_status" not in st.session_state:
-    st.session_state.run_status = "idle"  # idle, running, success, error
+if "result" not in st.session_state:
+    st.session_state.result = None
 if "selected_analysts" not in st.session_state:
-    st.session_state.selected_analysts = ["warren_buffett", "peter_lynch", "fundamentals_agent", "technical_agent", "valuation_agent"]
+    st.session_state.selected_analysts = list(get_all_analysts().keys())[:6]
 
 
 # ============== HEADER ==============
-col1, col2, col3 = st.columns([2, 1, 1])
-with col1:
-    st.markdown("## 📊 AI Hedge Fund Terminal")
-with col2:
-    # Data status indicator
-    if st.session_state.analysis_result:
-        result = st.session_state.analysis_result
-        has_delayed = any(ds.get("is_delayed", True) for ds in result.data_sources)
-        status_text = "DELAYED 15-20min" if has_delayed else "REAL-TIME"
-        status_color = "#d29922" if has_delayed else "#3fb950"
-        st.markdown(f"""
-        <div class="data-source">
-            <span class="dot {'delayed' if has_delayed else 'live'}"></span>
-            <span>{status_text}</span>
-            <span>• Yahoo Finance</span>
-        </div>
-        """, unsafe_allow_html=True)
-with col3:
-    st.caption(f"Last refresh: {datetime.now().strftime('%H:%M:%S')}")
+st.markdown("## 📊 AI Hedge Fund Terminal")
 
+if st.session_state.result:
+    st.caption(f"Data: Yahoo Finance (Delayed 15-20 min) | Last run: {datetime.now().strftime('%H:%M:%S')}")
 
-# ============== NAVIGATION ==============
-tabs = ["Signals", "Portfolio", "Performance", "Securities"]
-selected_tab = st.radio("Navigation", tabs, horizontal=True, label_visibility="collapsed")
-st.session_state.active_tab = selected_tab
+# Navigation
+tabs = ["Signals", "Portfolio", "Trade List"]
+selected = st.radio("", tabs, horizontal=True, label_visibility="collapsed")
+st.session_state.active_tab = selected
 
 st.divider()
 
@@ -616,45 +578,30 @@ st.divider()
 # ============== SIGNALS PAGE ==============
 if st.session_state.active_tab == "Signals":
 
-    # Two column layout
     config_col, results_col = st.columns([1, 2])
 
     with config_col:
         st.subheader("⚙️ Configuration")
 
         # Tickers
-        st.markdown("**Stock Tickers**")
-        ticker_input = st.text_input(
-            "Tickers",
-            value="AAPL, MSFT, NVDA, GOOGL",
-            placeholder="AAPL, MSFT, NVDA...",
-            label_visibility="collapsed",
-            help="Enter comma-separated stock ticker symbols"
-        )
+        st.markdown("**Tickers**")
+        ticker_input = st.text_input("Enter tickers", value="AAPL, MSFT, NVDA, GOOGL",
+                                      label_visibility="collapsed")
         tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-        st.caption(f"{len(tickers)} ticker(s) selected")
 
         st.divider()
 
-        # Investment settings
-        st.markdown("**Investment Settings**")
-        investment_amount = st.number_input(
-            "Capital ($)",
-            min_value=1000,
-            max_value=10000000,
-            value=100000,
-            step=10000,
-            help="Total capital available for investment"
-        )
+        # Capital
+        st.markdown("**Investment Capital**")
+        capital = st.number_input("Capital ($)", min_value=1000, value=100000, step=5000,
+                                   label_visibility="collapsed")
 
-        holdings_input = st.text_area(
-            "Current Holdings (optional)",
-            placeholder="AAPL:50\nMSFT:30",
-            height=80,
-            help="Enter current holdings as TICKER:SHARES, one per line"
-        )
+        # Holdings
+        st.markdown("**Current Holdings** (optional)")
+        holdings_text = st.text_area("TICKER:SHARES", placeholder="AAPL:50\nMSFT:30",
+                                      height=80, label_visibility="collapsed")
         holdings = {}
-        for line in holdings_input.strip().split("\n"):
+        for line in holdings_text.strip().split("\n"):
             if ":" in line:
                 try:
                     t, s = line.split(":")
@@ -664,448 +611,329 @@ if st.session_state.active_tab == "Signals":
 
         st.divider()
 
-        # Risk Tolerance with full explanation
-        st.markdown("**⚠️ Risk Tolerance**")
-
-        risk_level = st.slider(
-            "Risk Level",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.05,
-            label_visibility="collapsed",
-            help="0 = Very Conservative, 1 = Very Aggressive"
+        # Allocation Mode
+        st.markdown("**Allocation Mode**")
+        mode = st.selectbox(
+            "Mode",
+            options=list(ALLOCATION_MODES.keys()),
+            format_func=lambda x: ALLOCATION_MODES[x]["name"],
+            label_visibility="collapsed"
         )
+        st.caption(ALLOCATION_MODES[mode]["desc"])
+
+        st.divider()
+
+        # Risk Level
+        st.markdown("**Risk Level**")
+        risk_level = st.slider("Risk", 0.0, 1.0, 0.5, 0.05, label_visibility="collapsed")
 
         risk_params = calculate_risk_params(risk_level)
         risk_label = "Conservative" if risk_level < 0.35 else "Aggressive" if risk_level > 0.65 else "Moderate"
 
-        st.markdown(f"**{risk_label}** Profile")
+        st.markdown(f"**{risk_label}** ({risk_level:.0%})")
 
-        # Show derived parameters in a clear table
-        st.markdown("*Derived Parameters:*")
-        param_data = {
-            "Parameter": [
-                "Max Position Size",
-                "Stop Loss",
-                "Take Profit Target",
-                "Min Confidence to Act",
-                "Max Sector Exposure",
-                "Leverage Cap",
-                "Position Sizing"
-            ],
-            "Value": [
-                f"{risk_params.max_position_pct}% of portfolio",
-                f"{risk_params.stop_loss_pct}% below entry",
-                f"{risk_params.take_profit_pct}% above entry",
-                f"{risk_params.confidence_threshold}%",
-                f"{risk_params.max_sector_exposure}%",
-                f"{risk_params.leverage_cap}x",
-                risk_params.position_sizing_method
-            ]
-        }
-        st.dataframe(pd.DataFrame(param_data), hide_index=True, use_container_width=True)
-
-        with st.expander("ℹ️ How Risk Tolerance Works"):
-            st.markdown("""
-            **Risk tolerance controls:**
-            - **Position Size**: Higher risk = larger positions (5-25% per stock)
-            - **Stop Loss**: Higher risk = tighter stops (20% → 5%)
-            - **Confidence Threshold**: Higher risk = lower bar to act (70% → 40%)
-            - **Position Sizing Method**:
-              - Conservative: Fixed % allocation
-              - Moderate: Half-Kelly criterion
-              - Aggressive: Full Kelly criterion
-            """)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.caption(f"Max Position: {risk_params.max_position_pct:.0f}%")
+            st.caption(f"Stop Loss: {risk_params.stop_loss_pct:.0f}%")
+        with col2:
+            st.caption(f"Take Profit: {risk_params.take_profit_pct:.0f}%")
+            st.caption(f"Min Confidence: {risk_params.min_confidence:.0f}%")
 
         st.divider()
 
-        # Analyst Selection
-        st.markdown("**🤖 AI Analysts**")
-
-        # Quick actions
+        # Analysts
+        st.markdown("**AI Analysts**")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Select All", use_container_width=True):
                 st.session_state.selected_analysts = list(get_all_analysts().keys())
                 st.rerun()
         with col2:
-            if st.button("Clear All", use_container_width=True):
+            if st.button("Clear", use_container_width=True):
                 st.session_state.selected_analysts = []
                 st.rerun()
 
-        st.caption(f"{len(st.session_state.selected_analysts)} analyst(s) selected")
-
-        # Grouped selection with descriptions
-        for category, analysts in ANALYST_CATEGORIES.items():
-            selected_in_cat = sum(1 for a in analysts if a in st.session_state.selected_analysts)
-            with st.expander(f"**{category}** ({selected_in_cat}/{len(analysts)})"):
+        for cat, analysts in ANALYST_CATEGORIES.items():
+            with st.expander(f"{cat}"):
                 for key, info in analysts.items():
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        checked = st.checkbox(
-                            info["name"],
-                            value=key in st.session_state.selected_analysts,
-                            key=f"analyst_{key}"
-                        )
-                        if checked and key not in st.session_state.selected_analysts:
+                    if st.checkbox(info["name"], value=key in st.session_state.selected_analysts, key=f"a_{key}"):
+                        if key not in st.session_state.selected_analysts:
                             st.session_state.selected_analysts.append(key)
-                        elif not checked and key in st.session_state.selected_analysts:
+                    else:
+                        if key in st.session_state.selected_analysts:
                             st.session_state.selected_analysts.remove(key)
-                    with col2:
-                        st.caption(info["desc"])
+
+        st.caption(f"{len(st.session_state.selected_analysts)} analysts selected")
 
         st.divider()
 
-        # Run button with status
-        can_run = len(tickers) > 0 and len(st.session_state.selected_analysts) > 0
-
-        if st.button("🚀 RUN ANALYSIS", use_container_width=True, disabled=not can_run, type="primary"):
-            st.session_state.run_status = "running"
-
-            with st.spinner("Fetching market data and running analysis..."):
-                try:
-                    result = run_analysis(
-                        tickers=tickers,
-                        analysts=st.session_state.selected_analysts,
-                        risk_level=risk_level,
-                        investment_amount=investment_amount,
-                        current_holdings=holdings
-                    )
-                    st.session_state.analysis_result = result
-                    st.session_state.run_status = "success"
-                except Exception as e:
-                    st.session_state.run_status = "error"
-                    st.error(f"Analysis failed: {str(e)}")
-
+        # Run button - GREEN not red
+        if st.button("🚀 RUN ANALYSIS", type="primary", use_container_width=True,
+                     disabled=len(tickers) == 0 or len(st.session_state.selected_analysts) == 0):
+            with st.spinner("Analyzing..."):
+                st.session_state.result = run_analysis(
+                    tickers, st.session_state.selected_analysts,
+                    risk_level, capital, holdings, mode
+                )
             st.rerun()
 
-        if not can_run:
-            if len(tickers) == 0:
-                st.warning("Enter at least one ticker")
-            if len(st.session_state.selected_analysts) == 0:
-                st.warning("Select at least one analyst")
-
-    # Results Column
+    # Results
     with results_col:
-        if st.session_state.run_status == "running":
-            st.info("⏳ Analysis in progress...")
-            st.progress(50)
+        if st.session_state.result:
+            r = st.session_state.result
 
-        elif st.session_state.analysis_result and st.session_state.run_status == "success":
-            result = st.session_state.analysis_result
-            summary = result.summary
-
-            # Run metadata
-            st.caption(f"Run ID: `{result.run_id}` | {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')} | {summary['analysts_used']} analysts × {summary['tickers_analyzed']} tickers")
-
-            # Summary metrics
-            st.subheader("📊 Market Sentiment Overview")
+            # CAPITAL ALLOCATION BREAKDOWN - THE KEY FIX
+            st.subheader("💰 Capital Allocation")
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                sentiment_emoji = "📈" if summary["sentiment"] == "BULLISH" else "📉" if summary["sentiment"] == "BEARISH" else "➡️"
-                st.metric("Overall Sentiment", f"{sentiment_emoji} {summary['sentiment']}")
+                st.metric("Total Capital", f"${r.total_capital:,.0f}")
             with col2:
-                st.metric("Bullish Signals", summary["bullish"], help="Total bullish votes across all tickers and analysts")
+                st.metric("Deployed", f"${r.deployed_capital:,.0f}",
+                         f"{r.deployment_pct:.1f}%")
             with col3:
-                st.metric("Bearish Signals", summary["bearish"], help="Total bearish votes across all tickers and analysts")
+                st.metric("Cash Remaining", f"${r.cash_remaining:,.0f}",
+                         f"{100-r.deployment_pct:.1f}%")
             with col4:
-                st.metric("Neutral Signals", summary["neutral"], help="Total neutral votes across all tickers and analysts")
+                st.metric("Rounding Loss", f"${r.total_rounding_remainder:,.0f}",
+                         help="Lost to integer share rounding")
 
-            with st.expander("ℹ️ What are these signals?"):
-                st.markdown("""
-                **Signal Definition:**
-                - Each analyst evaluates each ticker independently
-                - Total signals = (# of analysts) × (# of tickers)
-                - A "signal" is one analyst's vote: BULLISH, BEARISH, or NEUTRAL
-                - These are **aggregated across all tickers** in this summary
-                """)
+            # Binding constraints - EXPLAIN WHY CASH REMAINS
+            st.markdown("**Why this allocation?**")
+            for constraint in r.binding_constraints:
+                if "binding" in constraint.lower() or "limited" in constraint.lower() or "risk" in constraint.lower():
+                    st.markdown(f'<div class="constraint-binding">⚠️ {constraint}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="constraint-ok">✅ {constraint}</div>', unsafe_allow_html=True)
 
             st.divider()
 
-            # Individual recommendations
+            # Exposure breakdown
+            st.subheader("📊 Exposure")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Long", f"${r.long_exposure:,.0f}")
+            with col2:
+                st.metric("Short", f"${r.short_exposure:,.0f}")
+            with col3:
+                st.metric("Gross", f"${r.gross_exposure:,.0f}")
+            with col4:
+                st.metric("Net", f"${r.net_exposure:,.0f}")
+
+            st.divider()
+
+            # Per-ticker cards
             st.subheader("📈 Recommendations")
 
-            for ticker, rec in result.recommendations.items():
-                # Action styling
-                if rec.action == "BUY":
-                    action_color = "#3fb950"
-                    action_icon = "📈"
-                elif rec.action in ["SELL", "SHORT"]:
-                    action_color = "#f85149"
-                    action_icon = "📉"
-                else:
-                    action_color = "#d29922"
-                    action_icon = "➡️"
+            for ticker, analysis in r.positions.items():
+                stock = analysis.stock_data
 
-                # Card container
-                with st.container():
-                    # Header row
-                    col1, col2 = st.columns([3, 1])
+                # Header
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    price_str = f"${stock.price:.2f}" if stock.valid else "N/A"
+                    change_str = f"{'▲' if stock.change >= 0 else '▼'} {abs(stock.change_pct):.2f}%" if stock.valid else ""
+                    st.markdown(f"### {ticker} - {price_str} {change_str}")
+                    st.caption(f"{stock.name} | {stock.source} | {stock.timestamp.strftime('%H:%M:%S')}")
+                with col2:
+                    if analysis.recommended_action == "BUY":
+                        st.success(f"📈 {analysis.recommended_action}")
+                    elif analysis.recommended_action == "SHORT":
+                        st.error(f"📉 {analysis.recommended_action}")
+                    else:
+                        st.warning(f"➡️ {analysis.recommended_action}")
+
+                # Thesis
+                st.info(analysis.thesis)
+
+                # Sizing details - SHOW BUDGET vs ACTUAL vs REMAINDER
+                if analysis.sizing and analysis.sizing.shares > 0:
+                    st.markdown("**Position Sizing:**")
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.markdown(f"### {ticker}")
-                        if rec.entry_price > 0:
-                            change_icon = "▲" if rec.signals[0].confidence > 50 else "▼" if rec.signals[0].confidence < 50 else "–"
-                            st.caption(f"${rec.entry_price:.2f}")
+                        st.metric("Allocated Budget", f"${analysis.sizing.allocated_budget:,.0f}")
                     with col2:
-                        st.markdown(f"### {action_icon} {rec.action}")
-
-                    # Thesis
-                    st.info(rec.thesis)
-
-                    # Metrics
-                    if rec.action != "HOLD":
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Shares", f"{rec.shares:,}")
-                        with col2:
-                            st.metric("Position Value", f"${rec.position_value:,.0f}")
-                        with col3:
-                            st.metric("Stop Loss", f"${rec.stop_loss:.2f}" if rec.stop_loss > 0 else "N/A")
-                        with col4:
-                            st.metric("Take Profit", f"${rec.take_profit:.2f}" if rec.take_profit > 0 else "N/A")
-
-                    # Vote breakdown
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Bullish", rec.bullish_count, help=f"{rec.bullish_count} analysts voted bullish")
-                    with col2:
-                        st.metric("Neutral", rec.neutral_count)
+                        st.metric("Shares", f"{analysis.sizing.shares:,}")
                     with col3:
-                        st.metric("Bearish", rec.bearish_count)
+                        st.metric("Actual Notional", f"${analysis.sizing.actual_notional:,.0f}")
+                    with col4:
+                        st.metric("Remainder", f"${analysis.sizing.remainder:,.2f}",
+                                 help="Budget not used due to integer shares")
 
-                    # Progress bar for vote distribution
-                    total_votes = rec.bullish_count + rec.bearish_count + rec.neutral_count
-                    if total_votes > 0:
-                        bull_pct = rec.bullish_count / total_votes
-                        bear_pct = rec.bearish_count / total_votes
-                        neut_pct = rec.neutral_count / total_votes
-                        st.progress(bull_pct, text=f"Bullish: {bull_pct:.0%} | Neutral: {neut_pct:.0%} | Bearish: {bear_pct:.0%}")
+                    st.caption(f"Position = {analysis.sizing.pct_of_portfolio:.1f}% of portfolio")
 
-                    # Key drivers and risks
-                    col1, col2 = st.columns(2)
+                # Trade instruction with CORRECT SL/TP for long vs short
+                if analysis.trade:
+                    t = analysis.trade
+                    st.markdown("**Trade Instruction:**")
+
+                    # Show delta if holdings exist
+                    if analysis.current_shares != 0:
+                        st.caption(f"Current: {analysis.current_shares} shares → Target: {analysis.sizing.shares if analysis.sizing else 0} → Delta: {analysis.delta_shares:+d}")
+
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.markdown("**Key Drivers:**")
-                        for driver in rec.key_drivers:
-                            st.markdown(f"• {driver}")
+                        st.metric("Action", f"{t.action} {t.shares}")
                     with col2:
-                        st.markdown("**Risks:**")
-                        for risk in rec.risks:
-                            st.markdown(f"• {risk}")
+                        st.metric("Entry", f"${t.entry_price:.2f}")
+                    with col3:
+                        # CORRECT labeling for SHORT
+                        if analysis.recommended_action == "SHORT":
+                            st.metric("Stop Loss", f"${t.stop_loss_price:.2f}",
+                                     f"+{t.stop_loss_pct:.1f}% (above entry)",
+                                     delta_color="inverse",
+                                     help="For SHORT: Stop loss is ABOVE entry - exit if price rises")
+                        else:
+                            st.metric("Stop Loss", f"${t.stop_loss_price:.2f}",
+                                     f"{t.stop_loss_pct:.1f}% (below entry)",
+                                     help="For LONG: Stop loss is BELOW entry - exit if price falls")
+                    with col4:
+                        if analysis.recommended_action == "SHORT":
+                            st.metric("Take Profit", f"${t.take_profit_price:.2f}",
+                                     f"{t.take_profit_pct:.1f}% (below entry)",
+                                     help="For SHORT: Take profit is BELOW entry - exit when price falls")
+                        else:
+                            st.metric("Take Profit", f"${t.take_profit_price:.2f}",
+                                     f"+{t.take_profit_pct:.1f}% (above entry)",
+                                     help="For LONG: Take profit is ABOVE entry - exit when price rises")
 
-                    st.caption(f"**Invalidation:** {rec.invalidation}")
+                # Vote breakdown
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Confidence", f"{analysis.confidence:.0f}%")
+                with col2:
+                    st.metric("Bullish", analysis.bullish_count)
+                with col3:
+                    st.metric("Neutral", analysis.neutral_count)
+                with col4:
+                    st.metric("Bearish", analysis.bearish_count)
 
-                    # Analyst breakdown (expandable)
-                    with st.expander(f"View {len(rec.signals)} Analyst Signals"):
-                        for signal in rec.signals:
-                            col1, col2, col3 = st.columns([2, 1, 1])
-                            with col1:
-                                st.markdown(f"**{signal.analyst_name}**")
-                                st.caption(signal.category)
-                            with col2:
-                                if signal.signal == "BULLISH":
-                                    st.success(signal.signal)
-                                elif signal.signal == "BEARISH":
-                                    st.error(signal.signal)
-                                else:
-                                    st.warning(signal.signal)
-                            with col3:
-                                st.metric("Confidence", f"{signal.confidence:.0f}%", label_visibility="collapsed")
+                # Key drivers & risks
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Drivers:**")
+                    for d in analysis.key_drivers:
+                        st.caption(f"• {d}")
+                with col2:
+                    st.markdown("**Risks:**")
+                    for risk in analysis.risks:
+                        st.caption(f"• {risk}")
 
-                    st.divider()
+                # Analyst breakdown
+                with st.expander(f"View {len(analysis.analyst_signals)} analyst signals"):
+                    for sig in analysis.analyst_signals:
+                        col1, col2, col3 = st.columns([2, 1, 1])
+                        with col1:
+                            st.text(f"{sig['analyst']} ({sig['category']})")
+                        with col2:
+                            if sig['signal'] == "BULLISH":
+                                st.success(sig['signal'])
+                            elif sig['signal'] == "BEARISH":
+                                st.error(sig['signal'])
+                            else:
+                                st.warning(sig['signal'])
+                        with col3:
+                            st.text(f"{sig['confidence']:.0f}%")
 
-            # Audit trail
-            with st.expander("📋 Audit Trail"):
-                st.json({
-                    "run_id": result.run_id,
-                    "timestamp": result.timestamp.isoformat(),
-                    "config": result.config,
-                    "risk_params": {
-                        "max_position_pct": result.risk_params.max_position_pct,
-                        "stop_loss_pct": result.risk_params.stop_loss_pct,
-                        "confidence_threshold": result.risk_params.confidence_threshold,
-                        "position_sizing": result.risk_params.position_sizing_method
-                    },
-                    "data_sources": result.data_sources
-                })
+                st.divider()
 
         else:
-            # Empty state
             st.markdown("""
-            ### 👈 Configure and Run
+            ### 👈 Configure & Run
 
-            1. Enter stock tickers (comma-separated)
-            2. Set your risk tolerance level
-            3. Select AI analysts to use
-            4. Click **RUN ANALYSIS**
-
-            Results will appear here with:
-            - Clear BUY/SELL/HOLD recommendations
-            - Position sizing based on your risk parameters
-            - Stop loss and take profit levels
-            - Analyst vote breakdown
-            - Key drivers and risks
+            1. Enter tickers
+            2. Set capital amount
+            3. Choose allocation mode:
+               - **Fully Allocated**: Deploy ~95% of capital
+               - **Equal Weight**: Split evenly among signals
+               - **Risk Targeted**: Size by confidence (may hold cash)
+               - **Conservative**: Only high-conviction trades
+            4. Adjust risk level
+            5. Select analysts
+            6. Click **RUN ANALYSIS**
             """)
 
 
 # ============== PORTFOLIO PAGE ==============
 elif st.session_state.active_tab == "Portfolio":
-    st.subheader("💼 Portfolio Overview")
+    st.subheader("💼 Portfolio Summary")
 
-    if st.session_state.analysis_result:
-        result = st.session_state.analysis_result
+    if st.session_state.result:
+        r = st.session_state.result
 
-        # Calculate portfolio metrics
-        total_long = sum(r.position_value for r in result.recommendations.values() if r.action == "BUY")
-        total_short = sum(r.position_value for r in result.recommendations.values() if r.action == "SHORT")
-        gross_exposure = total_long + total_short
-        net_exposure = total_long - total_short
-
-        # Summary
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Gross Exposure", f"${gross_exposure:,.0f}")
-        with col2:
-            st.metric("Net Exposure", f"${net_exposure:,.0f}")
-        with col3:
-            st.metric("Long Positions", sum(1 for r in result.recommendations.values() if r.action == "BUY"))
-        with col4:
-            st.metric("Short Positions", sum(1 for r in result.recommendations.values() if r.action == "SHORT"))
-
-        st.divider()
-
-        # Position table
-        st.markdown("### Position Details")
+        # Summary table
         positions = []
-        for ticker, rec in result.recommendations.items():
-            positions.append({
-                "Ticker": ticker,
-                "Action": rec.action,
-                "Shares": rec.shares,
-                "Entry": f"${rec.entry_price:.2f}" if rec.entry_price > 0 else "N/A",
-                "Value": f"${rec.position_value:,.0f}",
-                "Stop Loss": f"${rec.stop_loss:.2f}" if rec.stop_loss > 0 else "N/A",
-                "Take Profit": f"${rec.take_profit:.2f}" if rec.take_profit > 0 else "N/A",
-                "Confidence": f"{rec.confidence:.0f}%"
-            })
+        for ticker, a in r.positions.items():
+            if a.sizing:
+                positions.append({
+                    "Ticker": ticker,
+                    "Action": a.recommended_action,
+                    "Shares": a.sizing.shares,
+                    "Entry": f"${a.stock_data.price:.2f}",
+                    "Notional": f"${a.sizing.actual_notional:,.0f}",
+                    "% Portfolio": f"{a.sizing.pct_of_portfolio:.1f}%",
+                    "Stop Loss": f"${a.trade.stop_loss_price:.2f}" if a.trade else "N/A",
+                    "Take Profit": f"${a.trade.take_profit_price:.2f}" if a.trade else "N/A",
+                })
 
-        st.dataframe(pd.DataFrame(positions), hide_index=True, use_container_width=True)
+        if positions:
+            st.dataframe(pd.DataFrame(positions), hide_index=True, use_container_width=True)
+        else:
+            st.info("No positions. All tickers are HOLD.")
 
         st.divider()
 
-        # Risk metrics disclaimer
-        st.markdown("### ⚠️ Risk Metrics")
-        st.warning("""
-        **Note:** The following risk metrics are **estimates** based on historical data and assumptions.
-        They should not be used as the sole basis for investment decisions.
-        """)
-
-        with st.expander("View Risk Metric Methodology"):
-            st.markdown("""
-            **Value at Risk (VaR)**
-            - Method: Historical simulation
-            - Confidence: 95%
-            - Horizon: 1 day
-            - Lookback: 252 trading days
-            - Interpretation: "We expect losses to exceed this amount only 5% of trading days"
-
-            **Max Drawdown Estimate**
-            - Based on historical volatility and position sizing
-            - Not a prediction, but a stress scenario estimate
-
-            **Portfolio Beta**
-            - Weighted average of position betas vs S&P 500
-            - Source: Yahoo Finance
-            - Note: Beta is backward-looking and may not reflect future correlation
-            """)
+        # Cash breakdown
+        st.markdown("### 💵 Cash Analysis")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Unallocated Cash", f"${r.cash_remaining:,.0f}")
+        with col2:
+            st.metric("Rounding Remainders", f"${r.total_rounding_remainder:,.0f}")
+        with col3:
+            st.metric("Total Uninvested", f"${r.cash_remaining + r.total_rounding_remainder:,.0f}")
     else:
-        st.info("Run an analysis from the Signals tab to see portfolio details.")
+        st.info("Run analysis first.")
 
 
-# ============== PERFORMANCE PAGE ==============
-elif st.session_state.active_tab == "Performance":
-    st.subheader("📈 Performance Analytics")
+# ============== TRADE LIST PAGE ==============
+elif st.session_state.active_tab == "Trade List":
+    st.subheader("📋 Trade Instructions")
 
-    st.warning("""
-    **⚠️ Demo Data Notice**
+    if st.session_state.result:
+        r = st.session_state.result
 
-    The performance metrics shown below are **simulated for demonstration purposes only**.
-    They do not represent actual backtest results or live trading performance.
+        trades = []
+        for ticker, a in r.positions.items():
+            if a.trade and a.trade.shares > 0:
+                trades.append({
+                    "Ticker": ticker,
+                    "Action": a.trade.action,
+                    "Shares": a.trade.shares,
+                    "Entry Price": f"${a.trade.entry_price:.2f}",
+                    "Notional": f"${a.trade.notional:,.0f}",
+                    "Stop Loss": f"${a.trade.stop_loss_price:.2f}",
+                    "Take Profit": f"${a.trade.take_profit_price:.2f}",
+                    "Horizon": a.trade.time_horizon
+                })
 
-    To show real performance data, you would need to:
-    1. Connect to a backtesting engine
-    2. Run historical simulations with actual price data
-    3. Track live paper/real trading results
-    """)
-
-    st.divider()
-
-    st.info("Full backtesting and performance attribution will be available in a future update.")
-
-
-# ============== SECURITIES PAGE ==============
-elif st.session_state.active_tab == "Securities":
-    st.subheader("🔍 Securities Lookup")
-
-    ticker = st.text_input("Enter ticker symbol", value="AAPL", placeholder="AAPL")
-
-    if ticker:
-        with st.spinner(f"Fetching data for {ticker.upper()}..."):
-            stock = fetch_stock_data(ticker.upper())
-
-        if stock.valid:
-            # Data source indicator
-            st.caption(f"Source: {stock.source} | {'Delayed 15-20 min' if stock.is_delayed else 'Real-time'} | {stock.timestamp.strftime('%H:%M:%S')}")
-
-            col1, col2 = st.columns([2, 1])
-
-            with col1:
-                st.markdown(f"## {stock.ticker}")
-                st.caption(stock.name)
-
-                change_color = "green" if stock.change >= 0 else "red"
-                change_arrow = "▲" if stock.change >= 0 else "▼"
-
-                st.metric(
-                    "Price",
-                    f"${stock.price:.2f}",
-                    f"{change_arrow} ${abs(stock.change):.2f} ({abs(stock.change_pct):.2f}%)",
-                    delta_color="normal" if stock.change >= 0 else "inverse"
-                )
-
-            with col2:
-                st.metric("Sector", stock.sector)
-                st.metric("Market Cap", f"${stock.market_cap / 1e9:.1f}B" if stock.market_cap > 0 else "N/A")
+        if trades:
+            st.dataframe(pd.DataFrame(trades), hide_index=True, use_container_width=True)
 
             st.divider()
-
-            # Key metrics
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("P/E Ratio", f"{stock.pe_ratio:.1f}" if stock.pe_ratio > 0 else "N/A")
-            with col2:
-                st.metric("Beta", f"{stock.beta:.2f}")
-            with col3:
-                st.metric("52W High", f"${stock.high_52w:.2f}" if stock.high_52w > 0 else "N/A")
-            with col4:
-                st.metric("52W Low", f"${stock.low_52w:.2f}" if stock.low_52w > 0 else "N/A")
-
-            # Chart
-            st.divider()
-            st.markdown("### Price Chart (6 Months)")
-            try:
-                import yfinance as yf
-                hist = yf.Ticker(ticker.upper()).history(period="6mo")
-                if len(hist) > 0:
-                    st.line_chart(hist["Close"])
-            except:
-                st.warning("Chart data unavailable")
+            st.markdown("**Execution Notes:**")
+            st.caption("• All prices are delayed 15-20 minutes (Yahoo Finance)")
+            st.caption("• Use limit orders at or near indicated entry prices")
+            st.caption("• Set stop losses immediately after entry")
+            st.caption("• Review positions daily and adjust as needed")
         else:
-            st.error(f"Could not find data for ticker: {ticker.upper()}")
+            st.info("No trades required. All positions are HOLD or already at target.")
+    else:
+        st.info("Run analysis first.")
 
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Hedge Fund Terminal | For Educational & Research Purposes Only | Not Financial Advice")
-st.caption("Data provided by Yahoo Finance (delayed 15-20 minutes). Past performance does not guarantee future results.")
+st.caption("AI Hedge Fund Terminal | Educational Use Only | Not Financial Advice")
+st.caption("Data: Yahoo Finance (delayed 15-20 min) | Past performance ≠ future results")
