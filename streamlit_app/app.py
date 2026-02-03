@@ -18,14 +18,59 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
-    .signal-bullish { color: #22c55e; font-weight: bold; }
-    .signal-bearish { color: #ef4444; font-weight: bold; }
-    .signal-neutral { color: #6b7280; font-weight: bold; }
-    .metric-card {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: 700;
+        background: linear-gradient(90deg, #60a5fa, #a78bfa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0;
+    }
+    .sub-header {
+        color: #9ca3af;
+        font-size: 1.1rem;
+        margin-top: 0;
+    }
+    .instruction-card {
+        background: linear-gradient(135deg, #1e3a5f 0%, #1a1a2e 100%);
+        padding: 25px;
+        border-radius: 16px;
+        border: 1px solid #3b82f6;
+        margin: 15px 0;
+    }
+    .step-number {
+        background: #3b82f6;
+        color: white;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 12px;
+    }
+    .feature-card {
+        background: #1f2937;
         padding: 20px;
         border-radius: 12px;
         border: 1px solid #374151;
+        text-align: center;
+    }
+    .strategy-btn {
+        padding: 12px;
+        border-radius: 8px;
+        border: 2px solid #374151;
+        background: #1f2937;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .strategy-btn:hover {
+        border-color: #3b82f6;
+    }
+    .strategy-btn.selected {
+        border-color: #3b82f6;
+        background: #1e3a5f;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -33,51 +78,129 @@ st.markdown("""
 # Initialize session state
 if 'analysis_result' not in st.session_state:
     st.session_state.analysis_result = None
+if 'selected_strategy' not in st.session_state:
+    st.session_state.selected_strategy = None
 
-# Available analysts
-ANALYSTS = [
-    {"key": "warren_buffett", "name": "Warren Buffett", "desc": "Value investing principles"},
-    {"key": "charlie_munger", "name": "Charlie Munger", "desc": "Mental models approach"},
-    {"key": "ben_graham", "name": "Ben Graham", "desc": "Security analysis fundamentals"},
-    {"key": "peter_lynch", "name": "Peter Lynch", "desc": "Growth at reasonable price"},
-    {"key": "phil_fisher", "name": "Phil Fisher", "desc": "Scuttlebutt method"},
-    {"key": "stanley_druckenmiller", "name": "Stanley Druckenmiller", "desc": "Macro investing"},
-    {"key": "bill_ackman", "name": "Bill Ackman", "desc": "Activist investing"},
-    {"key": "cathie_wood", "name": "Cathie Wood", "desc": "Disruptive innovation"},
-    {"key": "fundamentals_agent", "name": "Fundamentals Agent", "desc": "Financial metrics analysis"},
-    {"key": "technical_agent", "name": "Technical Agent", "desc": "Chart patterns & indicators"},
-    {"key": "sentiment_agent", "name": "Sentiment Agent", "desc": "News & social sentiment"},
-    {"key": "valuation_agent", "name": "Valuation Agent", "desc": "DCF & relative valuation"},
-]
+# Investment Strategies with matched analysts
+STRATEGIES = {
+    "conservative": {
+        "name": "🛡️ Conservative",
+        "desc": "Low risk, stable returns, focus on value",
+        "risk": "Low",
+        "analysts": ["warren_buffett", "charlie_munger", "ben_graham"],
+        "color": "#22c55e"
+    },
+    "balanced": {
+        "name": "⚖️ Balanced",
+        "desc": "Mix of growth and value investing",
+        "risk": "Medium",
+        "analysts": ["warren_buffett", "peter_lynch", "fundamentals_agent", "valuation_agent"],
+        "color": "#eab308"
+    },
+    "growth": {
+        "name": "📈 Growth",
+        "desc": "Higher risk for higher potential returns",
+        "risk": "Medium-High",
+        "analysts": ["peter_lynch", "phil_fisher", "cathie_wood", "technical_agent"],
+        "color": "#f97316"
+    },
+    "aggressive": {
+        "name": "🚀 Aggressive",
+        "desc": "Maximum growth, higher volatility",
+        "risk": "High",
+        "analysts": ["cathie_wood", "bill_ackman", "stanley_druckenmiller", "sentiment_agent", "technical_agent"],
+        "color": "#ef4444"
+    },
+    "custom": {
+        "name": "🎯 Custom",
+        "desc": "Choose your own analysts",
+        "risk": "Varies",
+        "analysts": [],
+        "color": "#8b5cf6"
+    }
+}
 
-# Sample results data (for demo when API is not available)
+# All available analysts
+ALL_ANALYSTS = {
+    "warren_buffett": {"name": "Warren Buffett", "style": "Value", "icon": "💼"},
+    "charlie_munger": {"name": "Charlie Munger", "style": "Value", "icon": "🧠"},
+    "ben_graham": {"name": "Ben Graham", "style": "Value", "icon": "📚"},
+    "peter_lynch": {"name": "Peter Lynch", "style": "Growth", "icon": "📊"},
+    "phil_fisher": {"name": "Phil Fisher", "style": "Growth", "icon": "🔍"},
+    "stanley_druckenmiller": {"name": "S. Druckenmiller", "style": "Macro", "icon": "🌍"},
+    "bill_ackman": {"name": "Bill Ackman", "style": "Activist", "icon": "⚡"},
+    "cathie_wood": {"name": "Cathie Wood", "style": "Disruptive", "icon": "🚀"},
+    "fundamentals_agent": {"name": "Fundamentals", "style": "Analysis", "icon": "📈"},
+    "technical_agent": {"name": "Technical", "style": "Analysis", "icon": "📉"},
+    "sentiment_agent": {"name": "Sentiment", "style": "Analysis", "icon": "💬"},
+    "valuation_agent": {"name": "Valuation", "style": "Analysis", "icon": "💰"},
+}
+
+# Sample results data
 SAMPLE_RESULTS = {
     "AAPL": {
-        "warren_buffett": {"signal": "BULLISH", "confidence": 75, "reasoning": "Strong brand moat, consistent cash flows, and excellent management make Apple a classic Buffett-style investment."},
+        "warren_buffett": {"signal": "BULLISH", "confidence": 75, "reasoning": "Strong brand moat, consistent cash flows, and excellent management make Apple a classic value investment."},
         "charlie_munger": {"signal": "BULLISH", "confidence": 70, "reasoning": "Apple's ecosystem creates powerful network effects and switching costs."},
         "ben_graham": {"signal": "NEUTRAL", "confidence": 55, "reasoning": "Current valuation is above intrinsic value based on traditional metrics."},
-        "technical_agent": {"signal": "BULLISH", "confidence": 68, "reasoning": "Price above 50-day and 200-day moving averages, RSI showing strength."},
-        "sentiment_agent": {"signal": "BULLISH", "confidence": 72, "reasoning": "Positive sentiment from recent product announcements and earnings."},
+        "peter_lynch": {"signal": "BULLISH", "confidence": 72, "reasoning": "Strong earnings growth with reasonable PEG ratio."},
+        "phil_fisher": {"signal": "BULLISH", "confidence": 68, "reasoning": "Excellent R&D and management quality."},
+        "cathie_wood": {"signal": "NEUTRAL", "confidence": 50, "reasoning": "Mature company with limited disruptive potential."},
+        "technical_agent": {"signal": "BULLISH", "confidence": 68, "reasoning": "Price above key moving averages, RSI showing strength."},
+        "sentiment_agent": {"signal": "BULLISH", "confidence": 72, "reasoning": "Positive sentiment from recent product announcements."},
+        "fundamentals_agent": {"signal": "BULLISH", "confidence": 70, "reasoning": "Strong balance sheet and cash generation."},
+        "valuation_agent": {"signal": "NEUTRAL", "confidence": 52, "reasoning": "Fair value based on DCF analysis."},
     },
     "MSFT": {
-        "warren_buffett": {"signal": "BULLISH", "confidence": 80, "reasoning": "Cloud computing dominance and AI integration provide durable competitive advantages."},
-        "charlie_munger": {"signal": "BULLISH", "confidence": 78, "reasoning": "Microsoft's multiple revenue streams and enterprise relationships are exceptional."},
-        "ben_graham": {"signal": "NEUTRAL", "confidence": 50, "reasoning": "Trading at premium to historical averages, margin of safety is limited."},
-        "technical_agent": {"signal": "BULLISH", "confidence": 65, "reasoning": "Uptrend intact, support levels holding well."},
+        "warren_buffett": {"signal": "BULLISH", "confidence": 80, "reasoning": "Cloud dominance and AI integration provide durable competitive advantages."},
+        "charlie_munger": {"signal": "BULLISH", "confidence": 78, "reasoning": "Multiple revenue streams and enterprise relationships are exceptional."},
+        "ben_graham": {"signal": "NEUTRAL", "confidence": 50, "reasoning": "Trading at premium to historical averages."},
+        "peter_lynch": {"signal": "BULLISH", "confidence": 75, "reasoning": "Consistent growth with strong market position."},
+        "phil_fisher": {"signal": "BULLISH", "confidence": 80, "reasoning": "Superior management and innovation culture."},
+        "cathie_wood": {"signal": "BULLISH", "confidence": 70, "reasoning": "AI leadership position is compelling."},
+        "technical_agent": {"signal": "BULLISH", "confidence": 65, "reasoning": "Uptrend intact, support levels holding."},
         "sentiment_agent": {"signal": "BULLISH", "confidence": 85, "reasoning": "AI narrative driving strong positive sentiment."},
+        "fundamentals_agent": {"signal": "BULLISH", "confidence": 78, "reasoning": "Excellent margins and growth metrics."},
+        "valuation_agent": {"signal": "NEUTRAL", "confidence": 55, "reasoning": "Premium valuation but justified by growth."},
     },
     "NVDA": {
-        "warren_buffett": {"signal": "NEUTRAL", "confidence": 45, "reasoning": "Excellent business but valuation makes it speculative at current prices."},
-        "charlie_munger": {"signal": "BULLISH", "confidence": 65, "reasoning": "NVIDIA has a temporary monopoly in AI chips which could last years."},
-        "ben_graham": {"signal": "BEARISH", "confidence": 70, "reasoning": "P/E ratio far exceeds reasonable bounds for value investing."},
-        "technical_agent": {"signal": "BULLISH", "confidence": 60, "reasoning": "Strong momentum but showing signs of exhaustion."},
-        "sentiment_agent": {"signal": "BULLISH", "confidence": 90, "reasoning": "AI hype cycle driving extreme positive sentiment."},
+        "warren_buffett": {"signal": "NEUTRAL", "confidence": 45, "reasoning": "Excellent business but valuation makes it speculative."},
+        "charlie_munger": {"signal": "BULLISH", "confidence": 65, "reasoning": "Temporary monopoly in AI chips could last years."},
+        "ben_graham": {"signal": "BEARISH", "confidence": 70, "reasoning": "P/E ratio far exceeds reasonable bounds."},
+        "peter_lynch": {"signal": "BULLISH", "confidence": 60, "reasoning": "Growth justifies some premium but getting stretched."},
+        "phil_fisher": {"signal": "BULLISH", "confidence": 72, "reasoning": "Best-in-class technology and execution."},
+        "cathie_wood": {"signal": "BULLISH", "confidence": 88, "reasoning": "Core AI infrastructure play with massive TAM."},
+        "technical_agent": {"signal": "BULLISH", "confidence": 60, "reasoning": "Strong momentum but showing exhaustion signs."},
+        "sentiment_agent": {"signal": "BULLISH", "confidence": 90, "reasoning": "AI hype driving extreme positive sentiment."},
+        "fundamentals_agent": {"signal": "BULLISH", "confidence": 65, "reasoning": "Exceptional growth rates and margins."},
+        "valuation_agent": {"signal": "BEARISH", "confidence": 68, "reasoning": "Significantly overvalued on most metrics."},
+    },
+    "GOOGL": {
+        "warren_buffett": {"signal": "BULLISH", "confidence": 72, "reasoning": "Search monopoly and YouTube provide strong moats."},
+        "charlie_munger": {"signal": "BULLISH", "confidence": 70, "reasoning": "Excellent business with multiple growth drivers."},
+        "ben_graham": {"signal": "BULLISH", "confidence": 65, "reasoning": "Reasonable valuation relative to earnings power."},
+        "peter_lynch": {"signal": "BULLISH", "confidence": 68, "reasoning": "Cloud growth offsetting ad slowdown."},
+        "cathie_wood": {"signal": "NEUTRAL", "confidence": 55, "reasoning": "AI competition poses risks to core business."},
+        "technical_agent": {"signal": "NEUTRAL", "confidence": 50, "reasoning": "Consolidating in range, waiting for breakout."},
+        "sentiment_agent": {"signal": "NEUTRAL", "confidence": 55, "reasoning": "Mixed sentiment on AI competition."},
+        "fundamentals_agent": {"signal": "BULLISH", "confidence": 70, "reasoning": "Strong cash flows and balance sheet."},
+        "valuation_agent": {"signal": "BULLISH", "confidence": 68, "reasoning": "Attractive on sum-of-parts basis."},
+    },
+    "TSLA": {
+        "warren_buffett": {"signal": "BEARISH", "confidence": 65, "reasoning": "Too much uncertainty and competition in EV space."},
+        "charlie_munger": {"signal": "BEARISH", "confidence": 60, "reasoning": "Valuation assumes too much future dominance."},
+        "ben_graham": {"signal": "BEARISH", "confidence": 75, "reasoning": "No margin of safety at current prices."},
+        "peter_lynch": {"signal": "NEUTRAL", "confidence": 50, "reasoning": "Growth slowing, valuation still high."},
+        "cathie_wood": {"signal": "BULLISH", "confidence": 85, "reasoning": "Robotaxi and AI potential underappreciated."},
+        "technical_agent": {"signal": "NEUTRAL", "confidence": 48, "reasoning": "Volatile, no clear trend direction."},
+        "sentiment_agent": {"signal": "NEUTRAL", "confidence": 52, "reasoning": "Polarized sentiment, high uncertainty."},
+        "fundamentals_agent": {"signal": "NEUTRAL", "confidence": 55, "reasoning": "Margins compressing, competition increasing."},
+        "valuation_agent": {"signal": "BEARISH", "confidence": 70, "reasoning": "Overvalued on traditional metrics."},
     },
 }
 
 
-def run_analysis_demo(tickers: list, analysts: list):
-    """Run demo analysis with sample data."""
+def run_analysis(tickers: list, analysts: list, portfolio_value: float = 100000):
+    """Run analysis with sample data."""
     result = {"analyst_signals": {}, "decisions": {"decisions": []}}
 
     for ticker in tickers:
@@ -92,7 +215,6 @@ def run_analysis_demo(tickers: list, analysts: list):
             # Calculate decision
             bullish = sum(1 for s in signals.values() if s["signal"] == "BULLISH")
             bearish = sum(1 for s in signals.values() if s["signal"] == "BEARISH")
-            neutral = sum(1 for s in signals.values() if s["signal"] == "NEUTRAL")
 
             if bearish > bullish:
                 action = "SHORT"
@@ -103,71 +225,19 @@ def run_analysis_demo(tickers: list, analysts: list):
 
             avg_conf = sum(s["confidence"] for s in signals.values()) / len(signals) if signals else 0
 
+            # Calculate position size based on portfolio value
+            position_pct = min(0.25, avg_conf / 100 * 0.4)  # Max 25% per position
+            position_value = portfolio_value * position_pct
+
             result["decisions"]["decisions"].append({
                 "ticker": ticker_upper,
                 "action": action,
-                "quantity": abs(bullish - bearish) * 20,
+                "quantity": int(position_value / 100),  # Simplified
                 "confidence": avg_conf,
+                "position_value": position_value,
             })
 
     return result
-
-
-def run_analysis_live(tickers: list, analysts: list, model_name: str = "gpt-4o-mini"):
-    """Run live analysis using OpenAI API."""
-    try:
-        # Check for API key
-        api_key = None
-        try:
-            api_key = st.secrets.get("OPENAI_API_KEY")
-        except:
-            pass
-
-        if not api_key:
-            api_key = os.environ.get("OPENAI_API_KEY")
-
-        if not api_key:
-            st.warning("No OpenAI API key found. Using demo mode with sample data.")
-            return run_analysis_demo(tickers, analysts)
-
-        os.environ["OPENAI_API_KEY"] = api_key
-
-        # Try to import and run the actual hedge fund
-        import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-        from datetime import datetime, timedelta
-        from src.main import run_hedge_fund
-
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-
-        portfolio = {
-            "cash": 100000,
-            "margin_requirement": 0.0,
-            "margin_used": 0.0,
-            "positions": {t: {"long": 0, "short": 0, "long_cost_basis": 0.0, "short_cost_basis": 0.0, "short_margin_used": 0.0} for t in tickers},
-            "realized_gains": {t: {"long": 0.0, "short": 0.0} for t in tickers},
-        }
-
-        result = run_hedge_fund(
-            tickers=tickers,
-            start_date=start_date,
-            end_date=end_date,
-            portfolio=portfolio,
-            show_reasoning=True,
-            selected_analysts=analysts,
-            model_name=model_name,
-            model_provider="OpenAI",
-        )
-        return result
-
-    except ImportError as e:
-        st.warning(f"Live analysis not available: {e}. Using demo mode.")
-        return run_analysis_demo(tickers, analysts)
-    except Exception as e:
-        st.error(f"Analysis failed: {e}. Falling back to demo mode.")
-        return run_analysis_demo(tickers, analysts)
 
 
 def parse_result(result: dict, tickers: list):
@@ -184,8 +254,10 @@ def parse_result(result: dict, tickers: list):
         ticker_signals = signals.get(ticker_upper, {})
         agents = []
         for agent_key, signal_data in ticker_signals.items():
+            agent_info = ALL_ANALYSTS.get(agent_key, {"name": agent_key, "icon": "🤖"})
             agents.append({
-                "agent": agent_key.replace("_", " ").title(),
+                "agent": agent_info["name"],
+                "icon": agent_info.get("icon", "🤖"),
                 "signal": signal_data.get("signal", "NEUTRAL").upper(),
                 "confidence": signal_data.get("confidence", 0),
                 "reasoning": str(signal_data.get("reasoning", ""))[:200],
@@ -218,6 +290,7 @@ def parse_result(result: dict, tickers: list):
             "action": dec.get("action", "hold").upper(),
             "quantity": dec.get("quantity", 0),
             "confidence": dec.get("confidence", 0),
+            "position_value": dec.get("position_value", 0),
             "bullish": bull,
             "bearish": bear,
             "neutral": neut,
@@ -226,221 +299,392 @@ def parse_result(result: dict, tickers: list):
     return stocks_data, portfolio_data
 
 
-# Sidebar
+# ============== SIDEBAR ==============
 with st.sidebar:
-    st.title("📈 AI Hedge Fund")
+    st.markdown("## 📈 AI Hedge Fund")
     st.markdown("---")
 
-    # Tickers input
-    st.subheader("Stock Tickers")
-    ticker_input = st.text_input(
-        "Enter tickers (comma-separated)",
-        value="AAPL, MSFT, NVDA",
-        help="Enter stock ticker symbols separated by commas"
+    # Input Mode Selection
+    input_mode = st.radio(
+        "**How would you like to start?**",
+        ["🎯 Enter Stock Tickers", "💰 Portfolio Analysis"],
+        label_visibility="visible"
     )
-    tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 
     st.markdown("---")
 
-    # Analyst selection
-    st.subheader("AI Analysts")
-    st.caption("Select which AI agents to use")
+    if input_mode == "🎯 Enter Stock Tickers":
+        # Stock ticker input
+        st.markdown("### Stocks to Analyze")
+        ticker_input = st.text_input(
+            "Enter tickers separated by commas",
+            value="AAPL, MSFT, NVDA",
+            label_visibility="collapsed",
+            placeholder="e.g., AAPL, MSFT, NVDA"
+        )
+        tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Select All", use_container_width=True):
-            st.session_state.selected_analysts = [a["key"] for a in ANALYSTS]
-    with col2:
-        if st.button("Clear All", use_container_width=True):
-            st.session_state.selected_analysts = []
+        st.caption(f"📊 Available: AAPL, MSFT, NVDA, GOOGL, TSLA")
 
-    if 'selected_analysts' not in st.session_state:
-        st.session_state.selected_analysts = [a["key"] for a in ANALYSTS[:5]]
+        portfolio_value = 100000  # Default
 
-    selected = []
-    for analyst in ANALYSTS:
-        if st.checkbox(
-            analyst["name"],
-            value=analyst["key"] in st.session_state.selected_analysts,
-            help=analyst["desc"],
-            key=f"analyst_{analyst['key']}"
+    else:
+        # Portfolio input
+        st.markdown("### Your Portfolio")
+        portfolio_value = st.number_input(
+            "Investment Amount ($)",
+            min_value=1000,
+            max_value=10000000,
+            value=100000,
+            step=5000,
+            format="%d"
+        )
+
+        st.markdown("##### Stocks to Consider")
+        default_tickers = ["AAPL", "MSFT", "NVDA", "GOOGL", "TSLA"]
+        selected_tickers = st.multiselect(
+            "Select stocks",
+            options=default_tickers,
+            default=["AAPL", "MSFT", "NVDA"],
+            label_visibility="collapsed"
+        )
+        tickers = selected_tickers
+
+    st.markdown("---")
+
+    # Strategy Selection
+    st.markdown("### Investment Strategy")
+    st.caption("Choose a strategy that matches your risk tolerance")
+
+    # Strategy buttons
+    selected_strategy = st.session_state.selected_strategy
+
+    for key, strategy in STRATEGIES.items():
+        is_selected = selected_strategy == key
+        if st.button(
+            f"{strategy['name']}",
+            key=f"strategy_{key}",
+            use_container_width=True,
+            type="primary" if is_selected else "secondary"
         ):
-            selected.append(analyst["key"])
-    st.session_state.selected_analysts = selected
+            st.session_state.selected_strategy = key
+            st.rerun()
+
+    # Show strategy info
+    if selected_strategy and selected_strategy in STRATEGIES:
+        strategy = STRATEGIES[selected_strategy]
+        st.markdown(f"""
+        <div style="background: #1f2937; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 3px solid {strategy['color']};">
+            <div style="color: #9ca3af; font-size: 12px;">Risk Level: <strong style="color: {strategy['color']};">{strategy['risk']}</strong></div>
+            <div style="color: #d1d5db; font-size: 13px; margin-top: 5px;">{strategy['desc']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Custom analyst selection (only for Custom strategy)
+    if selected_strategy == "custom":
+        st.markdown("---")
+        st.markdown("### Select Analysts")
+
+        # Group analysts by style
+        styles = {}
+        for key, info in ALL_ANALYSTS.items():
+            style = info["style"]
+            if style not in styles:
+                styles[style] = []
+            styles[style].append((key, info))
+
+        if 'custom_analysts' not in st.session_state:
+            st.session_state.custom_analysts = []
+
+        selected_analysts = []
+        for style, analysts in styles.items():
+            st.caption(f"**{style}**")
+            cols = st.columns(2)
+            for i, (key, info) in enumerate(analysts):
+                with cols[i % 2]:
+                    if st.checkbox(f"{info['icon']} {info['name']}", key=f"custom_{key}"):
+                        selected_analysts.append(key)
+
+        st.session_state.custom_analysts = selected_analysts
+        analysts_to_use = selected_analysts
+    else:
+        analysts_to_use = STRATEGIES.get(selected_strategy, {}).get("analysts", [])
 
     st.markdown("---")
 
     # Run button
-    run_disabled = len(tickers) == 0 or len(selected) == 0
-    if st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=run_disabled):
-        with st.spinner("Running analysis..."):
-            result = run_analysis_live(tickers, selected)
+    can_run = len(tickers) > 0 and (len(analysts_to_use) > 0 or selected_strategy != "custom")
+
+    if st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=not can_run):
+        if selected_strategy and selected_strategy != "custom":
+            analysts_to_use = STRATEGIES[selected_strategy]["analysts"]
+
+        with st.spinner("Analyzing stocks..."):
+            result = run_analysis(tickers, analysts_to_use, portfolio_value)
             if result:
                 st.session_state.analysis_result = {
                     "result": result,
                     "tickers": tickers,
+                    "portfolio_value": portfolio_value,
+                    "strategy": selected_strategy,
                 }
-                st.success("Analysis complete!")
+                st.success("Done!")
                 st.rerun()
 
-    st.markdown("---")
-    st.caption("💡 Demo mode uses sample data. Add OPENAI_API_KEY in secrets for live analysis.")
+    if not can_run:
+        if not selected_strategy:
+            st.caption("⚠️ Please select a strategy")
+        elif len(tickers) == 0:
+            st.caption("⚠️ Please enter tickers")
+        elif selected_strategy == "custom" and len(analysts_to_use) == 0:
+            st.caption("⚠️ Please select analysts")
 
-# Main content
-st.title("AI Hedge Fund Analysis")
+
+# ============== MAIN CONTENT ==============
 
 if st.session_state.analysis_result:
+    # Show results
     result_data = st.session_state.analysis_result
     stocks_data, portfolio_data = parse_result(result_data["result"], result_data["tickers"])
+    portfolio_value = result_data.get("portfolio_value", 100000)
+    strategy_key = result_data.get("strategy")
+    strategy = STRATEGIES.get(strategy_key, {})
+
+    # Header
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown(f'<h1 class="main-header">Analysis Report</h1>', unsafe_allow_html=True)
+    with col2:
+        st.metric("Portfolio", f"${portfolio_value:,.0f}")
+    with col3:
+        st.metric("Strategy", strategy.get("name", "Custom").replace("🛡️ ", "").replace("⚖️ ", "").replace("📈 ", "").replace("🚀 ", "").replace("🎯 ", ""))
+
+    st.markdown("---")
 
     if portfolio_data:
         # Portfolio Recommendations
-        st.header("📊 Portfolio Recommendations")
+        st.markdown("### 📊 Recommendations")
 
         cols = st.columns(len(portfolio_data))
         for i, item in enumerate(portfolio_data):
             with cols[i]:
                 action_color = "#22c55e" if item["action"] in ["BUY", "LONG"] else "#ef4444" if item["action"] == "SHORT" else "#6b7280"
-                bg_color = "#064e3b" if item["action"] in ["BUY", "LONG"] else "#7f1d1d" if item["action"] == "SHORT" else "#1f2937"
-                border_color = "#065f46" if item["action"] in ["BUY", "LONG"] else "#991b1b" if item["action"] == "SHORT" else "#374151"
+                bg_start = "#064e3b" if item["action"] in ["BUY", "LONG"] else "#7f1d1d" if item["action"] == "SHORT" else "#1f2937"
 
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, {bg_color} 0%, #111827 100%);
-                            padding: 20px; border-radius: 12px; border: 1px solid {border_color}; margin-bottom: 10px;">
-                    <h2 style="margin: 0; color: white;">{item['ticker']}</h2>
-                    <span style="background: {action_color}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 14px; font-weight: bold;">
-                        {item['action']}
-                    </span>
-                    <p style="margin: 15px 0 5px 0; color: #9ca3af; font-size: 12px;">Position</p>
-                    <p style="margin: 0; color: white; font-size: 24px; font-weight: bold;">{item['quantity']} shares</p>
-                    <p style="margin: 15px 0 5px 0; color: #9ca3af; font-size: 12px;">Confidence</p>
-                    <div style="background: #374151; border-radius: 4px; height: 8px; margin-bottom: 5px;">
-                        <div style="background: {'#22c55e' if item['confidence'] >= 70 else '#eab308' if item['confidence'] >= 40 else '#ef4444'};
-                                    width: {item['confidence']}%; height: 100%; border-radius: 4px;"></div>
+                <div style="background: linear-gradient(180deg, {bg_start} 0%, #111827 100%);
+                            padding: 20px; border-radius: 16px; border: 1px solid #374151; height: 100%;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <span style="font-size: 28px; font-weight: bold; color: white;">{item['ticker']}</span>
+                        <span style="background: {action_color}; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold;">
+                            {item['action']}
+                        </span>
                     </div>
-                    <p style="margin: 0; color: white; font-size: 14px;">{item['confidence']:.0f}%</p>
-                    <div style="display: flex; gap: 4px; margin-top: 15px;">
-                        <div style="flex: {max(item['bullish'], 0.1)}; background: #22c55e; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['bullish']}</div>
-                        <div style="flex: {max(item['neutral'], 0.1)}; background: #6b7280; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['neutral']}</div>
-                        <div style="flex: {max(item['bearish'], 0.1)}; background: #ef4444; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['bearish']}</div>
+                    <div style="margin-bottom: 15px;">
+                        <div style="color: #9ca3af; font-size: 11px; text-transform: uppercase;">Suggested Position</div>
+                        <div style="color: white; font-size: 22px; font-weight: 600;">${item.get('position_value', 0):,.0f}</div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="color: #9ca3af; font-size: 11px;">Confidence</span>
+                            <span style="color: white; font-size: 13px; font-weight: 600;">{item['confidence']:.0f}%</span>
+                        </div>
+                        <div style="background: #374151; border-radius: 6px; height: 8px;">
+                            <div style="background: linear-gradient(90deg, #3b82f6, #8b5cf6); width: {item['confidence']}%; height: 100%; border-radius: 6px;"></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <div style="flex: {max(item['bullish'], 0.5)}; background: #22c55e; padding: 6px 0; border-radius: 6px; text-align: center;">
+                            <span style="color: white; font-size: 12px; font-weight: 600;">{item['bullish']} 📈</span>
+                        </div>
+                        <div style="flex: {max(item['neutral'], 0.5)}; background: #6b7280; padding: 6px 0; border-radius: 6px; text-align: center;">
+                            <span style="color: white; font-size: 12px; font-weight: 600;">{item['neutral']} ➡️</span>
+                        </div>
+                        <div style="flex: {max(item['bearish'], 0.5)}; background: #ef4444; padding: 6px 0; border-radius: 6px; text-align: center;">
+                            <span style="color: white; font-size: 12px; font-weight: 600;">{item['bearish']} 📉</span>
+                        </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # Signal Summary
+        # Summary row
         col1, col2 = st.columns(2)
 
         with col1:
-            st.subheader("📈 Signal Summary")
+            st.markdown("### 📈 Signal Distribution")
             total_bull = sum(p["bullish"] for p in portfolio_data)
             total_bear = sum(p["bearish"] for p in portfolio_data)
             total_neut = sum(p["neutral"] for p in portfolio_data)
             total = total_bull + total_bear + total_neut
 
+            st.markdown(f"""
+            <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                <div style="flex: 1; text-align: center; padding: 20px; background: linear-gradient(180deg, #064e3b 0%, #1f2937 100%); border-radius: 12px;">
+                    <div style="font-size: 36px; font-weight: bold; color: #22c55e;">{total_bull}</div>
+                    <div style="font-size: 13px; color: #9ca3af;">Bullish</div>
+                </div>
+                <div style="flex: 1; text-align: center; padding: 20px; background: linear-gradient(180deg, #374151 0%, #1f2937 100%); border-radius: 12px;">
+                    <div style="font-size: 36px; font-weight: bold; color: #9ca3af;">{total_neut}</div>
+                    <div style="font-size: 13px; color: #9ca3af;">Neutral</div>
+                </div>
+                <div style="flex: 1; text-align: center; padding: 20px; background: linear-gradient(180deg, #7f1d1d 0%, #1f2937 100%); border-radius: 12px;">
+                    <div style="font-size: 36px; font-weight: bold; color: #ef4444;">{total_bear}</div>
+                    <div style="font-size: 13px; color: #9ca3af;">Bearish</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
             if total > 0:
                 st.markdown(f"""
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <div style="flex: 1; text-align: center; padding: 15px; background: #064e3b; border-radius: 8px;">
-                        <div style="font-size: 28px; font-weight: bold; color: #22c55e;">{total_bull}</div>
-                        <div style="font-size: 12px; color: #9ca3af;">Bullish</div>
-                    </div>
-                    <div style="flex: 1; text-align: center; padding: 15px; background: #1f2937; border-radius: 8px;">
-                        <div style="font-size: 28px; font-weight: bold; color: #6b7280;">{total_neut}</div>
-                        <div style="font-size: 12px; color: #9ca3af;">Neutral</div>
-                    </div>
-                    <div style="flex: 1; text-align: center; padding: 15px; background: #7f1d1d; border-radius: 8px;">
-                        <div style="font-size: 28px; font-weight: bold; color: #ef4444;">{total_bear}</div>
-                        <div style="font-size: 12px; color: #9ca3af;">Bearish</div>
-                    </div>
-                </div>
-                <div style="height: 20px; border-radius: 10px; overflow: hidden; display: flex;">
-                    <div style="width: {(total_bull/total)*100}%; background: #22c55e;"></div>
-                    <div style="width: {(total_neut/total)*100}%; background: #6b7280;"></div>
-                    <div style="width: {(total_bear/total)*100}%; background: #ef4444;"></div>
+                <div style="height: 24px; border-radius: 12px; overflow: hidden; display: flex; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+                    <div style="width: {(total_bull/total)*100}%; background: linear-gradient(90deg, #16a34a, #22c55e);"></div>
+                    <div style="width: {(total_neut/total)*100}%; background: linear-gradient(90deg, #4b5563, #6b7280);"></div>
+                    <div style="width: {(total_bear/total)*100}%; background: linear-gradient(90deg, #dc2626, #ef4444);"></div>
                 </div>
                 """, unsafe_allow_html=True)
 
         with col2:
-            st.subheader("🏆 Top Agents by Confidence")
+            st.markdown("### 🏆 Analyst Confidence")
             if stocks_data:
                 agent_stats = {}
                 for stock in stocks_data:
                     for agent in stock["agents"]:
                         name = agent["agent"]
+                        icon = agent.get("icon", "🤖")
                         if name not in agent_stats:
-                            agent_stats[name] = {"total": 0, "confidence": 0}
+                            agent_stats[name] = {"total": 0, "confidence": 0, "icon": icon}
                         agent_stats[name]["total"] += 1
                         agent_stats[name]["confidence"] += agent["confidence"]
 
                 sorted_agents = sorted(
-                    [(name, stats["confidence"] / stats["total"]) for name, stats in agent_stats.items()],
+                    [(name, stats["confidence"] / stats["total"], stats["icon"]) for name, stats in agent_stats.items()],
                     key=lambda x: x[1],
                     reverse=True
                 )[:5]
 
-                for i, (name, avg_conf) in enumerate(sorted_agents):
-                    medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
+                for i, (name, avg_conf, icon) in enumerate(sorted_agents):
+                    medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else ""
                     st.markdown(f"""
-                    <div style="display: flex; align-items: center; padding: 10px; background: #1f2937; border-radius: 8px; margin-bottom: 8px;">
-                        <span style="font-size: 20px; margin-right: 12px;">{medal}</span>
+                    <div style="display: flex; align-items: center; padding: 12px 15px; background: #1f2937; border-radius: 10px; margin-bottom: 8px;">
+                        <span style="font-size: 18px; margin-right: 10px;">{icon}</span>
                         <span style="flex: 1; color: white; font-size: 14px;">{name}</span>
                         <span style="color: #60a5fa; font-weight: bold; font-size: 16px;">{avg_conf:.0f}%</span>
+                        <span style="margin-left: 8px;">{medal}</span>
                     </div>
                     """, unsafe_allow_html=True)
 
         st.markdown("---")
 
         # Detailed Analysis
-        st.header("📋 Detailed Analysis")
+        st.markdown("### 📋 Detailed Analysis")
 
         for stock in stocks_data:
             with st.expander(f"**{stock['ticker']}** — {stock['bullish']} Bullish | {stock['neutral']} Neutral | {stock['bearish']} Bearish"):
                 for agent in stock["agents"]:
                     signal_color = "#22c55e" if agent["signal"] == "BULLISH" else "#ef4444" if agent["signal"] == "BEARISH" else "#6b7280"
                     st.markdown(f"""
-                    <div style="background: #1f2937; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid {signal_color};">
+                    <div style="background: #1f2937; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 4px solid {signal_color};">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <strong style="color: white; font-size: 16px;">{agent['agent']}</strong>
-                            <span style="background: {signal_color}30; color: {signal_color}; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">{agent['signal']}</span>
+                            <div>
+                                <span style="font-size: 18px; margin-right: 8px;">{agent.get('icon', '🤖')}</span>
+                                <strong style="color: white; font-size: 15px;">{agent['agent']}</strong>
+                            </div>
+                            <span style="background: {signal_color}25; color: {signal_color}; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">{agent['signal']}</span>
                         </div>
                         <div style="color: #60a5fa; font-size: 13px; margin-bottom: 8px;">Confidence: {agent['confidence']:.0f}%</div>
-                        <div style="color: #9ca3af; font-size: 13px; line-height: 1.5;">{agent['reasoning']}</div>
+                        <div style="color: #9ca3af; font-size: 13px; line-height: 1.6;">{agent['reasoning']}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
 else:
-    # Welcome screen
+    # Welcome screen with instructions
+    st.markdown('<h1 class="main-header">AI Hedge Fund Analysis</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Get AI-powered stock analysis from legendary investors</p>', unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # How it works
+    st.markdown("### 🚀 How It Works")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("""
+        <div class="instruction-card">
+            <div style="font-size: 40px; margin-bottom: 15px;">1️⃣</div>
+            <h4 style="color: white; margin-bottom: 10px;">Choose Stocks</h4>
+            <p style="color: #9ca3af; font-size: 14px;">Enter tickers like AAPL, MSFT, or use portfolio mode to get recommendations based on your investment amount.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="instruction-card">
+            <div style="font-size: 40px; margin-bottom: 15px;">2️⃣</div>
+            <h4 style="color: white; margin-bottom: 10px;">Select Strategy</h4>
+            <p style="color: #9ca3af; font-size: 14px;">Pick a strategy matching your risk tolerance. Each strategy uses different AI analysts suited for that approach.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="instruction-card">
+            <div style="font-size: 40px; margin-bottom: 15px;">3️⃣</div>
+            <h4 style="color: white; margin-bottom: 10px;">Get Analysis</h4>
+            <p style="color: #9ca3af; font-size: 14px;">Receive BUY/HOLD/SHORT recommendations with confidence scores and detailed reasoning from each analyst.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Strategy overview
+    st.markdown("### 📊 Investment Strategies")
+
+    cols = st.columns(4)
+    strategies_display = ["conservative", "balanced", "growth", "aggressive"]
+
+    for i, key in enumerate(strategies_display):
+        strategy = STRATEGIES[key]
+        with cols[i]:
+            st.markdown(f"""
+            <div style="background: #1f2937; padding: 20px; border-radius: 12px; border: 2px solid {strategy['color']}30; text-align: center; height: 200px;">
+                <div style="font-size: 28px; margin-bottom: 10px;">{strategy['name'].split()[0]}</div>
+                <div style="color: white; font-size: 16px; font-weight: 600; margin-bottom: 8px;">{strategy['name'].split()[1] if len(strategy['name'].split()) > 1 else ''}</div>
+                <div style="color: {strategy['color']}; font-size: 13px; font-weight: 600; margin-bottom: 10px;">Risk: {strategy['risk']}</div>
+                <div style="color: #9ca3af; font-size: 12px;">{strategy['desc']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # AI Analysts preview
+    st.markdown("### 🤖 AI Analysts")
+    st.caption("Our team of AI analysts modeled after legendary investors")
+
+    cols = st.columns(6)
+    analysts_preview = list(ALL_ANALYSTS.items())[:6]
+
+    for i, (key, info) in enumerate(analysts_preview):
+        with cols[i]:
+            st.markdown(f"""
+            <div style="background: #1f2937; padding: 15px; border-radius: 10px; text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 8px;">{info['icon']}</div>
+                <div style="color: white; font-size: 13px; font-weight: 600;">{info['name']}</div>
+                <div style="color: #6b7280; font-size: 11px;">{info['style']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Call to action
     st.markdown("""
-    <div style="text-align: center; padding: 60px 20px;">
-        <h2 style="color: white;">Welcome to AI Hedge Fund Analysis</h2>
-        <p style="color: #9ca3af; font-size: 16px; margin-bottom: 30px;">
-            Select your tickers and AI analysts from the sidebar, then click <strong>Run Analysis</strong> to get started.
-        </p>
-
-        <div style="max-width: 600px; margin: 0 auto; text-align: left;">
-            <h4 style="color: white;">How it works:</h4>
-            <ol style="color: #9ca3af; line-height: 2;">
-                <li>Enter stock tickers (e.g., AAPL, MSFT, NVDA)</li>
-                <li>Select AI analysts to evaluate the stocks</li>
-                <li>Each analyst provides a signal (Bullish/Bearish/Neutral) with confidence</li>
-                <li>The system aggregates signals into trading recommendations</li>
-            </ol>
-        </div>
-
-        <div style="margin-top: 40px; padding: 20px; background: #1f2937; border-radius: 12px; max-width: 500px; margin-left: auto; margin-right: auto;">
-            <p style="color: #9ca3af; margin: 0;">
-                💡 <strong>Demo Mode:</strong> Try it now with sample data.<br>
-                Add your <code>OPENAI_API_KEY</code> in secrets for live AI analysis.
-            </p>
-        </div>
+    <div style="text-align: center; padding: 30px;">
+        <p style="color: #9ca3af; font-size: 16px;">👈 Use the sidebar to get started</p>
     </div>
     """, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
-st.markdown(
-    "<p style='text-align: center; color: #6b7280; font-size: 12px;'>Built with Streamlit | AI Hedge Fund Analysis Tool</p>",
-    unsafe_allow_html=True
-)
+st.caption("Built with Streamlit | AI Hedge Fund Analysis Tool | Demo uses sample data")
