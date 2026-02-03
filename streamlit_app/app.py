@@ -5,14 +5,7 @@ Streamlit version for easy sharing and deployment
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
 import os
-import sys
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # Page config
 st.set_page_config(
@@ -25,22 +18,21 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
-    .stMetric {
-        background-color: #1e1e1e;
-        padding: 15px;
-        border-radius: 10px;
-    }
     .signal-bullish { color: #22c55e; font-weight: bold; }
     .signal-bearish { color: #ef4444; font-weight: bold; }
     .signal-neutral { color: #6b7280; font-weight: bold; }
+    .metric-card {
+        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #374151;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
 if 'analysis_result' not in st.session_state:
     st.session_state.analysis_result = None
-if 'run_history' not in st.session_state:
-    st.session_state.run_history = []
 
 # Available analysts
 ANALYSTS = [
@@ -58,14 +50,73 @@ ANALYSTS = [
     {"key": "valuation_agent", "name": "Valuation Agent", "desc": "DCF & relative valuation"},
 ]
 
+# Sample results data (for demo when API is not available)
+SAMPLE_RESULTS = {
+    "AAPL": {
+        "warren_buffett": {"signal": "BULLISH", "confidence": 75, "reasoning": "Strong brand moat, consistent cash flows, and excellent management make Apple a classic Buffett-style investment."},
+        "charlie_munger": {"signal": "BULLISH", "confidence": 70, "reasoning": "Apple's ecosystem creates powerful network effects and switching costs."},
+        "ben_graham": {"signal": "NEUTRAL", "confidence": 55, "reasoning": "Current valuation is above intrinsic value based on traditional metrics."},
+        "technical_agent": {"signal": "BULLISH", "confidence": 68, "reasoning": "Price above 50-day and 200-day moving averages, RSI showing strength."},
+        "sentiment_agent": {"signal": "BULLISH", "confidence": 72, "reasoning": "Positive sentiment from recent product announcements and earnings."},
+    },
+    "MSFT": {
+        "warren_buffett": {"signal": "BULLISH", "confidence": 80, "reasoning": "Cloud computing dominance and AI integration provide durable competitive advantages."},
+        "charlie_munger": {"signal": "BULLISH", "confidence": 78, "reasoning": "Microsoft's multiple revenue streams and enterprise relationships are exceptional."},
+        "ben_graham": {"signal": "NEUTRAL", "confidence": 50, "reasoning": "Trading at premium to historical averages, margin of safety is limited."},
+        "technical_agent": {"signal": "BULLISH", "confidence": 65, "reasoning": "Uptrend intact, support levels holding well."},
+        "sentiment_agent": {"signal": "BULLISH", "confidence": 85, "reasoning": "AI narrative driving strong positive sentiment."},
+    },
+    "NVDA": {
+        "warren_buffett": {"signal": "NEUTRAL", "confidence": 45, "reasoning": "Excellent business but valuation makes it speculative at current prices."},
+        "charlie_munger": {"signal": "BULLISH", "confidence": 65, "reasoning": "NVIDIA has a temporary monopoly in AI chips which could last years."},
+        "ben_graham": {"signal": "BEARISH", "confidence": 70, "reasoning": "P/E ratio far exceeds reasonable bounds for value investing."},
+        "technical_agent": {"signal": "BULLISH", "confidence": 60, "reasoning": "Strong momentum but showing signs of exhaustion."},
+        "sentiment_agent": {"signal": "BULLISH", "confidence": 90, "reasoning": "AI hype cycle driving extreme positive sentiment."},
+    },
+}
 
-def run_analysis(tickers: list, analysts: list, model_name: str = "gpt-4o-mini"):
-    """Run the hedge fund analysis."""
+
+def run_analysis_demo(tickers: list, analysts: list):
+    """Run demo analysis with sample data."""
+    result = {"analyst_signals": {}, "decisions": {"decisions": []}}
+
+    for ticker in tickers:
+        ticker_upper = ticker.upper()
+        if ticker_upper in SAMPLE_RESULTS:
+            signals = {}
+            for analyst in analysts:
+                if analyst in SAMPLE_RESULTS[ticker_upper]:
+                    signals[analyst] = SAMPLE_RESULTS[ticker_upper][analyst]
+            result["analyst_signals"][ticker_upper] = signals
+
+            # Calculate decision
+            bullish = sum(1 for s in signals.values() if s["signal"] == "BULLISH")
+            bearish = sum(1 for s in signals.values() if s["signal"] == "BEARISH")
+            neutral = sum(1 for s in signals.values() if s["signal"] == "NEUTRAL")
+
+            if bearish > bullish:
+                action = "SHORT"
+            elif bullish > bearish:
+                action = "BUY"
+            else:
+                action = "HOLD"
+
+            avg_conf = sum(s["confidence"] for s in signals.values()) / len(signals) if signals else 0
+
+            result["decisions"]["decisions"].append({
+                "ticker": ticker_upper,
+                "action": action,
+                "quantity": abs(bullish - bearish) * 20,
+                "confidence": avg_conf,
+            })
+
+    return result
+
+
+def run_analysis_live(tickers: list, analysts: list, model_name: str = "gpt-4o-mini"):
+    """Run live analysis using OpenAI API."""
     try:
-        from dotenv import load_dotenv
-        load_dotenv()
-
-        # Check for API keys - try Streamlit secrets first, then env vars
+        # Check for API key
         api_key = None
         try:
             api_key = st.secrets.get("OPENAI_API_KEY")
@@ -76,20 +127,16 @@ def run_analysis(tickers: list, analysts: list, model_name: str = "gpt-4o-mini")
             api_key = os.environ.get("OPENAI_API_KEY")
 
         if not api_key:
-            st.error("Missing OPENAI_API_KEY. Please set it in Streamlit secrets or .env file.")
-            return None
+            st.warning("No OpenAI API key found. Using demo mode with sample data.")
+            return run_analysis_demo(tickers, analysts)
 
-        # Set the API key in environment for the hedge fund code
         os.environ["OPENAI_API_KEY"] = api_key
 
-        # Also try to get financial datasets key
-        try:
-            fin_key = st.secrets.get("FINANCIAL_DATASETS_API_KEY")
-            if fin_key:
-                os.environ["FINANCIAL_DATASETS_API_KEY"] = fin_key
-        except:
-            pass
+        # Try to import and run the actual hedge fund
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+        from datetime import datetime, timedelta
         from src.main import run_hedge_fund
 
         end_date = datetime.now().strftime("%Y-%m-%d")
@@ -99,11 +146,8 @@ def run_analysis(tickers: list, analysts: list, model_name: str = "gpt-4o-mini")
             "cash": 100000,
             "margin_requirement": 0.0,
             "margin_used": 0.0,
-            "positions": {
-                ticker: {"long": 0, "short": 0, "long_cost_basis": 0.0, "short_cost_basis": 0.0, "short_margin_used": 0.0}
-                for ticker in tickers
-            },
-            "realized_gains": {ticker: {"long": 0.0, "short": 0.0} for ticker in tickers},
+            "positions": {t: {"long": 0, "short": 0, "long_cost_basis": 0.0, "short_cost_basis": 0.0, "short_margin_used": 0.0} for t in tickers},
+            "realized_gains": {t: {"long": 0.0, "short": 0.0} for t in tickers},
         }
 
         result = run_hedge_fund(
@@ -116,11 +160,14 @@ def run_analysis(tickers: list, analysts: list, model_name: str = "gpt-4o-mini")
             model_name=model_name,
             model_provider="OpenAI",
         )
-
         return result
+
+    except ImportError as e:
+        st.warning(f"Live analysis not available: {e}. Using demo mode.")
+        return run_analysis_demo(tickers, analysts)
     except Exception as e:
-        st.error(f"Analysis failed: {str(e)}")
-        return None
+        st.error(f"Analysis failed: {e}. Falling back to demo mode.")
+        return run_analysis_demo(tickers, analysts)
 
 
 def parse_result(result: dict, tickers: list):
@@ -133,7 +180,8 @@ def parse_result(result: dict, tickers: list):
 
     stocks_data = []
     for ticker in tickers:
-        ticker_signals = signals.get(ticker, {})
+        ticker_upper = ticker.upper()
+        ticker_signals = signals.get(ticker_upper, {})
         agents = []
         for agent_key, signal_data in ticker_signals.items():
             agents.append({
@@ -148,7 +196,7 @@ def parse_result(result: dict, tickers: list):
         neutral = sum(1 for a in agents if a["signal"] == "NEUTRAL")
 
         stocks_data.append({
-            "ticker": ticker,
+            "ticker": ticker_upper,
             "agents": agents,
             "bullish": bullish,
             "bearish": bearish,
@@ -176,12 +224,6 @@ def parse_result(result: dict, tickers: list):
         })
 
     return stocks_data, portfolio_data
-
-
-def display_signal_badge(signal: str):
-    """Return colored signal text."""
-    colors = {"BULLISH": "#22c55e", "BEARISH": "#ef4444", "NEUTRAL": "#6b7280"}
-    return f'<span style="color: {colors.get(signal, "#6b7280")}; font-weight: bold;">{signal}</span>'
 
 
 # Sidebar
@@ -213,7 +255,7 @@ with st.sidebar:
             st.session_state.selected_analysts = []
 
     if 'selected_analysts' not in st.session_state:
-        st.session_state.selected_analysts = [a["key"] for a in ANALYSTS[:6]]
+        st.session_state.selected_analysts = [a["key"] for a in ANALYSTS[:5]]
 
     selected = []
     for analyst in ANALYSTS:
@@ -228,29 +270,21 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Model selection
-    model = st.selectbox(
-        "AI Model",
-        ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
-        help="Select the OpenAI model to use"
-    )
-
-    st.markdown("---")
-
     # Run button
     run_disabled = len(tickers) == 0 or len(selected) == 0
     if st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=run_disabled):
-        with st.spinner("Running analysis... This may take a few minutes."):
-            result = run_analysis(tickers, selected, model)
+        with st.spinner("Running analysis..."):
+            result = run_analysis_live(tickers, selected)
             if result:
                 st.session_state.analysis_result = {
                     "result": result,
                     "tickers": tickers,
-                    "timestamp": datetime.now().isoformat(),
                 }
-                st.session_state.run_history.append(st.session_state.analysis_result)
                 st.success("Analysis complete!")
                 st.rerun()
+
+    st.markdown("---")
+    st.caption("💡 Demo mode uses sample data. Add OPENAI_API_KEY in secrets for live analysis.")
 
 # Main content
 st.title("AI Hedge Fund Analysis")
@@ -267,10 +301,12 @@ if st.session_state.analysis_result:
         for i, item in enumerate(portfolio_data):
             with cols[i]:
                 action_color = "#22c55e" if item["action"] in ["BUY", "LONG"] else "#ef4444" if item["action"] == "SHORT" else "#6b7280"
+                bg_color = "#064e3b" if item["action"] in ["BUY", "LONG"] else "#7f1d1d" if item["action"] == "SHORT" else "#1f2937"
+                border_color = "#065f46" if item["action"] in ["BUY", "LONG"] else "#991b1b" if item["action"] == "SHORT" else "#374151"
 
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, {'#064e3b' if item['action'] in ['BUY', 'LONG'] else '#7f1d1d' if item['action'] == 'SHORT' else '#1f2937'} 0%, #111827 100%);
-                            padding: 20px; border-radius: 12px; border: 1px solid {'#065f46' if item['action'] in ['BUY', 'LONG'] else '#991b1b' if item['action'] == 'SHORT' else '#374151'};">
+                <div style="background: linear-gradient(135deg, {bg_color} 0%, #111827 100%);
+                            padding: 20px; border-radius: 12px; border: 1px solid {border_color}; margin-bottom: 10px;">
                     <h2 style="margin: 0; color: white;">{item['ticker']}</h2>
                     <span style="background: {action_color}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 14px; font-weight: bold;">
                         {item['action']}
@@ -284,9 +320,9 @@ if st.session_state.analysis_result:
                     </div>
                     <p style="margin: 0; color: white; font-size: 14px;">{item['confidence']:.0f}%</p>
                     <div style="display: flex; gap: 4px; margin-top: 15px;">
-                        <div style="flex: {item['bullish']}; background: #22c55e; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['bullish']}</div>
+                        <div style="flex: {max(item['bullish'], 0.1)}; background: #22c55e; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['bullish']}</div>
                         <div style="flex: {max(item['neutral'], 0.1)}; background: #6b7280; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['neutral']}</div>
-                        <div style="flex: {item['bearish']}; background: #ef4444; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['bearish']}</div>
+                        <div style="flex: {max(item['bearish'], 0.1)}; background: #ef4444; padding: 4px; border-radius: 4px; text-align: center; color: white; font-size: 12px;">{item['bearish']}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -301,25 +337,33 @@ if st.session_state.analysis_result:
             total_bull = sum(p["bullish"] for p in portfolio_data)
             total_bear = sum(p["bearish"] for p in portfolio_data)
             total_neut = sum(p["neutral"] for p in portfolio_data)
+            total = total_bull + total_bear + total_neut
 
-            fig = go.Figure(data=[go.Pie(
-                labels=['Bullish', 'Neutral', 'Bearish'],
-                values=[total_bull, total_neut, total_bear],
-                hole=.4,
-                marker_colors=['#22c55e', '#6b7280', '#ef4444']
-            )])
-            fig.update_layout(
-                showlegend=True,
-                height=300,
-                margin=dict(t=20, b=20, l=20, r=20),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color='white'
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            if total > 0:
+                st.markdown(f"""
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <div style="flex: 1; text-align: center; padding: 15px; background: #064e3b; border-radius: 8px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #22c55e;">{total_bull}</div>
+                        <div style="font-size: 12px; color: #9ca3af;">Bullish</div>
+                    </div>
+                    <div style="flex: 1; text-align: center; padding: 15px; background: #1f2937; border-radius: 8px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #6b7280;">{total_neut}</div>
+                        <div style="font-size: 12px; color: #9ca3af;">Neutral</div>
+                    </div>
+                    <div style="flex: 1; text-align: center; padding: 15px; background: #7f1d1d; border-radius: 8px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #ef4444;">{total_bear}</div>
+                        <div style="font-size: 12px; color: #9ca3af;">Bearish</div>
+                    </div>
+                </div>
+                <div style="height: 20px; border-radius: 10px; overflow: hidden; display: flex;">
+                    <div style="width: {(total_bull/total)*100}%; background: #22c55e;"></div>
+                    <div style="width: {(total_neut/total)*100}%; background: #6b7280;"></div>
+                    <div style="width: {(total_bear/total)*100}%; background: #ef4444;"></div>
+                </div>
+                """, unsafe_allow_html=True)
 
         with col2:
-            st.subheader("🏆 Top Agents")
+            st.subheader("🏆 Top Agents by Confidence")
             if stocks_data:
                 agent_stats = {}
                 for stock in stocks_data:
@@ -339,10 +383,10 @@ if st.session_state.analysis_result:
                 for i, (name, avg_conf) in enumerate(sorted_agents):
                     medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
                     st.markdown(f"""
-                    <div style="display: flex; align-items: center; padding: 8px; background: #1f2937; border-radius: 8px; margin-bottom: 8px;">
-                        <span style="font-size: 20px; margin-right: 10px;">{medal}</span>
-                        <span style="flex: 1; color: white;">{name}</span>
-                        <span style="color: #60a5fa; font-weight: bold;">{avg_conf:.0f}%</span>
+                    <div style="display: flex; align-items: center; padding: 10px; background: #1f2937; border-radius: 8px; margin-bottom: 8px;">
+                        <span style="font-size: 20px; margin-right: 12px;">{medal}</span>
+                        <span style="flex: 1; color: white; font-size: 14px;">{name}</span>
+                        <span style="color: #60a5fa; font-weight: bold; font-size: 16px;">{avg_conf:.0f}%</span>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -352,42 +396,51 @@ if st.session_state.analysis_result:
         st.header("📋 Detailed Analysis")
 
         for stock in stocks_data:
-            with st.expander(f"**{stock['ticker']}** - {stock['bullish']} Bullish | {stock['neutral']} Neutral | {stock['bearish']} Bearish"):
-                df = pd.DataFrame(stock["agents"])
-
-                for _, agent in df.iterrows():
+            with st.expander(f"**{stock['ticker']}** — {stock['bullish']} Bullish | {stock['neutral']} Neutral | {stock['bearish']} Bearish"):
+                for agent in stock["agents"]:
                     signal_color = "#22c55e" if agent["signal"] == "BULLISH" else "#ef4444" if agent["signal"] == "BEARISH" else "#6b7280"
                     st.markdown(f"""
-                    <div style="background: #1f2937; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 3px solid {signal_color};">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <strong style="color: white;">{agent['agent']}</strong>
-                            <span style="background: {signal_color}30; color: {signal_color}; padding: 2px 8px; border-radius: 12px; font-size: 12px;">{agent['signal']}</span>
+                    <div style="background: #1f2937; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid {signal_color};">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong style="color: white; font-size: 16px;">{agent['agent']}</strong>
+                            <span style="background: {signal_color}30; color: {signal_color}; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">{agent['signal']}</span>
                         </div>
-                        <div style="color: #9ca3af; font-size: 12px; margin-top: 4px;">Confidence: {agent['confidence']:.0f}%</div>
-                        <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">{agent['reasoning'][:200]}...</div>
+                        <div style="color: #60a5fa; font-size: 13px; margin-bottom: 8px;">Confidence: {agent['confidence']:.0f}%</div>
+                        <div style="color: #9ca3af; font-size: 13px; line-height: 1.5;">{agent['reasoning']}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
 else:
     # Welcome screen
     st.markdown("""
-    <div style="text-align: center; padding: 50px;">
-        <h2>Welcome to AI Hedge Fund Analysis</h2>
-        <p style="color: #9ca3af;">Select your tickers and AI analysts from the sidebar, then click <strong>Run Analysis</strong> to get started.</p>
-        <br>
-        <h4>How it works:</h4>
-        <ol style="text-align: left; max-width: 500px; margin: 0 auto; color: #9ca3af;">
-            <li>Enter stock tickers (e.g., AAPL, MSFT, NVDA)</li>
-            <li>Select AI analysts to evaluate the stocks</li>
-            <li>Each analyst provides a signal (Bullish/Bearish/Neutral) with confidence</li>
-            <li>The portfolio manager aggregates signals into trading recommendations</li>
-        </ol>
+    <div style="text-align: center; padding: 60px 20px;">
+        <h2 style="color: white;">Welcome to AI Hedge Fund Analysis</h2>
+        <p style="color: #9ca3af; font-size: 16px; margin-bottom: 30px;">
+            Select your tickers and AI analysts from the sidebar, then click <strong>Run Analysis</strong> to get started.
+        </p>
+
+        <div style="max-width: 600px; margin: 0 auto; text-align: left;">
+            <h4 style="color: white;">How it works:</h4>
+            <ol style="color: #9ca3af; line-height: 2;">
+                <li>Enter stock tickers (e.g., AAPL, MSFT, NVDA)</li>
+                <li>Select AI analysts to evaluate the stocks</li>
+                <li>Each analyst provides a signal (Bullish/Bearish/Neutral) with confidence</li>
+                <li>The system aggregates signals into trading recommendations</li>
+            </ol>
+        </div>
+
+        <div style="margin-top: 40px; padding: 20px; background: #1f2937; border-radius: 12px; max-width: 500px; margin-left: auto; margin-right: auto;">
+            <p style="color: #9ca3af; margin: 0;">
+                💡 <strong>Demo Mode:</strong> Try it now with sample data.<br>
+                Add your <code>OPENAI_API_KEY</code> in secrets for live AI analysis.
+            </p>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
 st.markdown(
-    "<p style='text-align: center; color: #6b7280;'>Built with Streamlit | AI Hedge Fund Analysis Tool</p>",
+    "<p style='text-align: center; color: #6b7280; font-size: 12px;'>Built with Streamlit | AI Hedge Fund Analysis Tool</p>",
     unsafe_allow_html=True
 )
