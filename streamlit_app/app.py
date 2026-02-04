@@ -1421,7 +1421,7 @@ with tab_portfolio:
         st.caption("Compare current allocation to target and generate rebalance trades.")
 
         # Calculate current weights
-        total_portfolio = sum(p['notional'] for p in r["positions"].items()) if r["positions"] else 0
+        total_portfolio = sum(p['notional'] for p in r["positions"].values()) if r["positions"] else 0
 
         if total_portfolio > 0 and len(r["positions"]) > 1:
             # Get target weight (equal weight by default)
