@@ -14,13 +14,7 @@ import altair as alt
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
-# ============== PAGE CONFIG ==============
-st.set_page_config(
-    page_title="AI Portfolio Allocator",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# Page config moved to main app.py
 
 # ============== CSS - COMPREHENSIVE DARK THEME ==============
 st.markdown("""
