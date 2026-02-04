@@ -10,7 +10,7 @@ st.set_page_config(
     page_title="AI Financial Advisor",
     page_icon="🏦",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ============== CSS ==============
@@ -21,8 +21,7 @@ st.markdown("""
     .stApp { background: #0d1117; }
     #MainMenu, footer, header { visibility: hidden; }
 
-    /* Hide default sidebar nav for landing page */
-    [data-testid="stSidebarNav"] { display: none; }
+    /* Show sidebar for navigation */
 
     /* Text styling */
     h1, h2, h3, h4 { color: #e6edf3 !important; font-weight: 600 !important; }
@@ -133,7 +132,10 @@ with col1:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<a href="/1_Portfolio_Allocator" target="_self" style="display:block; background:#238636; color:white; text-align:center; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:500; margin-top:20px;">Enter Portfolio Allocator →</a>', unsafe_allow_html=True)
+    st.markdown('''
+    <a href="1_Portfolio_Allocator" target="_self" style="display:block; background:#238636; color:white; text-align:center; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:500; margin-top:20px;">Enter Portfolio Allocator →</a>
+    ''', unsafe_allow_html=True)
+    st.caption("Or use the sidebar menu →")
 
 with col2:
     st.markdown("""
@@ -155,7 +157,10 @@ with col2:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<a href="/2_Stock_Analyzer" target="_self" style="display:block; background:#238636; color:white; text-align:center; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:500; margin-top:20px;">Enter Stock Analyzer →</a>', unsafe_allow_html=True)
+    st.markdown('''
+    <a href="2_Stock_Analyzer" target="_self" style="display:block; background:#238636; color:white; text-align:center; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:500; margin-top:20px;">Enter Stock Analyzer →</a>
+    ''', unsafe_allow_html=True)
+    st.caption("Or use the sidebar menu →")
 
 # ============== FOOTER ==============
 st.markdown("<br><br>", unsafe_allow_html=True)
