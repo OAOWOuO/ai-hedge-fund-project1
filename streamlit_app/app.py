@@ -1,6 +1,6 @@
 """
-AI Portfolio Allocator v5.4
-P0 Features: Risk Analytics (Sharpe, VaR, Beta), Sector Allocation Chart
+AI Portfolio Allocator v5.5
+Updated color palette - professional varied colors, easy to read
 """
 
 import streamlit as st
@@ -896,7 +896,7 @@ def get_selected_analysts():
 
 # ============== HEADER ==============
 st.write("# 📊 AI Portfolio Allocator")
-st.caption("v5.4 | Yahoo Finance (15-20 min delayed)")
+st.caption("v5.5 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
 tab_signals, tab_portfolio, tab_analytics, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
@@ -1310,8 +1310,8 @@ with tab_portfolio:
             with col_chart:
                 # Prepare pie chart data with custom colors matching theme
                 pie_data = []
-                # Define colors matching dark theme (greens for positions, gray for cash)
-                colors = ['#238636', '#2ea043', '#3fb950', '#56d364', '#7ee787', '#58a6ff', '#79c0ff', '#a5d6ff']
+                # Professional varied color palette - easy to distinguish
+                colors = ['#58a6ff', '#f0883e', '#a371f7', '#3fb950', '#f778ba', '#56d4dd', '#ffd33d', '#ff7b72', '#79c0ff', '#d2a8ff']
                 color_map = {}
 
                 for i, (t, p) in enumerate(r["positions"].items()):
@@ -1533,8 +1533,8 @@ with tab_analytics:
                             for s, v in sorted(sector_data.items(), key=lambda x: -x[1])
                         ])
 
-                        # Dark theme colors for sectors
-                        sector_colors = ['#238636', '#2ea043', '#3fb950', '#56d364', '#58a6ff', '#79c0ff', '#a5d6ff', '#f0883e', '#d29922', '#8b949e']
+                        # Professional varied color palette for sectors - easy to distinguish
+                        sector_colors = ['#58a6ff', '#f0883e', '#a371f7', '#3fb950', '#f778ba', '#56d4dd', '#ffd33d', '#ff7b72', '#79c0ff', '#d2a8ff']
 
                         sector_chart = alt.Chart(sector_df).mark_arc(innerRadius=50, stroke='#0d1117', strokeWidth=2).encode(
                             theta=alt.Theta(field="Allocation", type="quantitative"),
@@ -1832,7 +1832,7 @@ with tab_securities:
 
                 # Interactive Price Line Chart with tooltip
                 st.write("**Price**")
-                price_chart = alt.Chart(chart_data).mark_line(color='#238636', strokeWidth=2).encode(
+                price_chart = alt.Chart(chart_data).mark_line(color='#58a6ff', strokeWidth=2).encode(
                     x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%b %d', labelColor='#8b949e', titleColor='#8b949e')),
                     y=alt.Y('Price:Q', title='Price ($)', scale=alt.Scale(zero=False), axis=alt.Axis(labelColor='#8b949e', titleColor='#8b949e')),
                     tooltip=[
@@ -1845,7 +1845,7 @@ with tab_securities:
                 # Interactive Volume Bar Chart with tooltip
                 if 'Volume' in chart_data.columns and chart_data['Volume'].sum() > 0:
                     st.write("**Volume**")
-                    volume_chart = alt.Chart(chart_data).mark_bar(color='#58a6ff', opacity=0.7).encode(
+                    volume_chart = alt.Chart(chart_data).mark_bar(color='#f0883e', opacity=0.7).encode(
                         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%b %d', labelColor='#8b949e', titleColor='#8b949e')),
                         y=alt.Y('Volume:Q', title='Volume', axis=alt.Axis(labelColor='#8b949e', titleColor='#8b949e')),
                         tooltip=[
@@ -2067,4 +2067,4 @@ with tab_settings:
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Portfolio Allocator v5.4 | Educational Use Only | Not Financial Advice")
+st.caption("AI Portfolio Allocator v5.5 | Educational Use Only | Not Financial Advice")
