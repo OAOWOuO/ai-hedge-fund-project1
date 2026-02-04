@@ -1,9 +1,9 @@
 """
-AI Portfolio Allocator v5.7
+AI Portfolio Allocator v5.8
 - Color indicators for allocation breakdowns
 - Improved correlation matrix with blue-white-red color scheme
-- New Performance tab: Portfolio vs S&P 500 benchmark comparison
-- Fixed date alignment: uses benchmark timeline with forward-fill for missing data
+- Performance tab: Portfolio vs S&P 500 benchmark comparison
+- Rebalance section: shows drift from target and recommended trades
 """
 
 import streamlit as st
@@ -1414,6 +1414,100 @@ with tab_portfolio:
             st.dataframe(pd.DataFrame(holdings_data), hide_index=True, use_container_width=True)
             if total_holdings_value > 0:
                 st.write(f"**Total Current Holdings Value:** ${total_holdings_value:,.0f}")
+
+        # ===== REBALANCE SECTION =====
+        st.divider()
+        st.write("### Portfolio Rebalance")
+        st.caption("Compare current allocation to target and generate rebalance trades.")
+
+        # Calculate current weights
+        total_portfolio = sum(p['notional'] for p in r["positions"].items()) if r["positions"] else 0
+
+        if total_portfolio > 0 and len(r["positions"]) > 1:
+            # Get target weight (equal weight by default)
+            n_positions = len(r["positions"])
+            target_weight = 1.0 / n_positions
+
+            rebalance_data = []
+            total_to_buy = 0
+            total_to_sell = 0
+
+            for ticker, pos in r["positions"].items():
+                current_weight = pos['notional'] / total_portfolio
+                target_notional = total_portfolio * target_weight
+                diff_notional = target_notional - pos['notional']
+                diff_pct = (current_weight - target_weight) * 100
+
+                if diff_notional > 50:  # Need to buy more
+                    action = "BUY"
+                    shares_to_trade = int(diff_notional / pos['price']) if pos['price'] > 0 else 0
+                    total_to_buy += diff_notional
+                elif diff_notional < -50:  # Need to sell
+                    action = "SELL"
+                    shares_to_trade = int(abs(diff_notional) / pos['price']) if pos['price'] > 0 else 0
+                    total_to_sell += abs(diff_notional)
+                else:
+                    action = "HOLD"
+                    shares_to_trade = 0
+
+                rebalance_data.append({
+                    "Ticker": ticker,
+                    "Current %": f"{current_weight*100:.1f}%",
+                    "Target %": f"{target_weight*100:.1f}%",
+                    "Drift": f"{diff_pct:+.1f}%",
+                    "Action": action,
+                    "Shares": shares_to_trade if shares_to_trade > 0 else "-",
+                    "Amount": f"${abs(diff_notional):,.0f}" if abs(diff_notional) > 50 else "-"
+                })
+
+            # Show metrics
+            col1, col2, col3 = st.columns(3)
+            max_drift = max(abs(float(d["Drift"].replace('%','').replace('+',''))) for d in rebalance_data)
+
+            with col1:
+                st.metric("Max Drift", f"{max_drift:.1f}%")
+            with col2:
+                st.metric("Total to Buy", f"${total_to_buy:,.0f}")
+            with col3:
+                st.metric("Total to Sell", f"${total_to_sell:,.0f}")
+
+            # Drift assessment
+            if max_drift < 2:
+                st.success("**Portfolio is well-balanced.** No rebalancing needed.")
+            elif max_drift < 5:
+                st.info("**Minor drift detected.** Consider rebalancing if transaction costs are low.")
+            else:
+                st.warning("**Significant drift detected.** Rebalancing recommended to maintain target allocation.")
+
+            # Rebalance table
+            st.dataframe(pd.DataFrame(rebalance_data), hide_index=True, use_container_width=True)
+
+            # Allocation comparison chart
+            chart_data = []
+            for ticker, pos in r["positions"].items():
+                current_weight = pos['notional'] / total_portfolio * 100
+                chart_data.append({"Ticker": ticker, "Weight": current_weight, "Type": "Current"})
+                chart_data.append({"Ticker": ticker, "Weight": target_weight * 100, "Type": "Target"})
+
+            chart_df = pd.DataFrame(chart_data)
+
+            rebal_chart = alt.Chart(chart_df).mark_bar().encode(
+                x=alt.X('Ticker:N', title=None, axis=alt.Axis(labelColor='#8b949e')),
+                y=alt.Y('Weight:Q', title='Weight (%)', axis=alt.Axis(labelColor='#8b949e')),
+                color=alt.Color('Type:N',
+                               scale=alt.Scale(domain=['Current', 'Target'], range=['#58a6ff', '#3fb950']),
+                               legend=alt.Legend(title=None, orient='top', labelColor='#c9d1d9')),
+                xOffset='Type:N',
+                tooltip=[
+                    alt.Tooltip('Ticker:N'),
+                    alt.Tooltip('Type:N'),
+                    alt.Tooltip('Weight:Q', format='.1f')
+                ]
+            ).properties(height=250).configure_view(strokeWidth=0).configure(background='#161b22')
+
+            st.altair_chart(rebal_chart, use_container_width=True)
+        else:
+            st.info("Need at least 2 positions to analyze rebalancing.")
     else:
         st.info("Run analysis from Signals tab first.")
 
@@ -1696,18 +1790,15 @@ with tab_performance:
                 benchmark_returns = benchmark_data["Close"].pct_change().dropna()
                 reference_dates = benchmark_returns.index
 
-                # Get returns for each ticker, aligned to benchmark dates
+                # Get returns for each ticker using fetch_history function
                 all_returns = {}
                 for ticker in positions.keys():
-                    if ticker in ticker_results:
-                        tr = ticker_results[ticker]
-                        if isinstance(tr, dict) and "history" in tr and tr["history"] is not None:
-                            hist = tr["history"]
-                            if "Close" in hist.columns and len(hist) > 1:
-                                returns = hist["Close"].pct_change().dropna()
-                                # Align to benchmark dates, forward-fill gaps then fill remaining with 0
-                                aligned = returns.reindex(reference_dates).ffill().fillna(0)
-                                all_returns[ticker] = aligned
+                    hist = fetch_history(ticker, "1y")  # Use existing cached function
+                    if hist is not None and not hist.empty and "Close" in hist.columns and len(hist) > 1:
+                        returns = hist["Close"].pct_change().dropna()
+                        # Align to benchmark dates, forward-fill gaps then fill remaining with 0
+                        aligned = returns.reindex(reference_dates).ffill().fillna(0)
+                        all_returns[ticker] = aligned
 
                 if len(all_returns) > 0 and len(reference_dates) > 5:
                     # Calculate weighted portfolio returns using benchmark timeline
