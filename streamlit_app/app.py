@@ -1,6 +1,6 @@
 """
-AI Portfolio Allocator v5.2
-Holdings display, analyst signals table fix, pie chart allocation
+AI Portfolio Allocator v5.3
+Holdings work without ticker input, explanations, consistent dark theme
 """
 
 import streamlit as st
@@ -467,20 +467,29 @@ def run_analysis(tickers: List[str], analysts: List[str], risk_level: float, cap
                  holdings: Dict[str, int], mode_key: str, allow_fractional: bool = False,
                  custom_params: dict = None) -> dict:
 
+    # Merge tickers with holdings - holdings tickers should always be analyzed
+    all_tickers = list(set(tickers) | set(holdings.keys()))
+    all_tickers.sort()
+
     sorted_analysts = sorted(analysts)
-    seed_str = f"{sorted(tickers)}{sorted_analysts}{risk_level:.2f}{capital}{mode_key}"
+    seed_str = f"{sorted(all_tickers)}{sorted_analysts}{risk_level:.2f}{capital}{mode_key}"
     seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
 
     risk_params = get_risk_params(risk_level, custom_params)
     mode = ALLOCATION_MODES[mode_key]
     timestamp = datetime.now()
 
-    audit = {"inputs": {"tickers": tickers, "analysts": sorted_analysts, "capital": capital,
-                        "mode": mode["name"], "risk_level": risk_level}, "steps": []}
+    audit = {"inputs": {"tickers": all_tickers, "analysts": sorted_analysts, "capital": capital,
+                        "mode": mode["name"], "risk_level": risk_level, "holdings": holdings}, "steps": []}
+
+    # Note holdings in audit
+    if holdings:
+        holdings_str = ", ".join([f"{t}:{s}" for t, s in holdings.items()])
+        audit["steps"].append(("info", f"Current holdings: {holdings_str}"))
 
     # PHASE 1: SIGNALS
     ticker_results = {}
-    for ticker in tickers:
+    for ticker in all_tickers:
         np.random.seed(seed)
         stock = fetch_stock(ticker)
         signals = []
@@ -727,7 +736,7 @@ def get_selected_analysts():
 
 # ============== HEADER ==============
 st.write("# 📊 AI Portfolio Allocator")
-st.caption("v5.2 | Yahoo Finance (15-20 min delayed)")
+st.caption("v5.3 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
 tab_signals, tab_portfolio, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
@@ -873,25 +882,73 @@ with tab_signals:
             input_holdings = r['config'].get('holdings', {})
             if input_holdings:
                 st.divider()
-                st.write("### Current Holdings (Input)")
+                st.write("### Current Holdings Analysis")
+                st.caption("Your existing positions are analyzed and recommendations are provided below.")
+
                 holdings_data = []
+                total_holdings_value = 0
                 for tick, shares in input_holdings.items():
-                    # Get price from ticker_results if available
+                    # Get price and analysis from ticker_results
                     tr = r['ticker_results'].get(tick, {})
                     stock = tr.get('stock', {})
                     price = stock.get('price', 0) if stock.get('valid') else 0
                     value = shares * price if price > 0 else 0
+                    total_holdings_value += value
+
+                    # Get recommendation
+                    action = tr.get('action', 'N/A')
+                    pos = r['positions'].get(tick, {})
+                    target_shares = pos.get('shares', 0) if pos else 0
+
+                    # Determine recommendation with explanation
+                    if action == 'BUY':
+                        if target_shares > shares:
+                            recommendation = f"BUY MORE (+{int(target_shares - shares)})"
+                            explanation = f"Bullish signal. Increase position to {int(target_shares)} shares."
+                        else:
+                            recommendation = "HOLD"
+                            explanation = "Bullish signal. Current position is sufficient."
+                    elif action == 'SHORT':
+                        recommendation = "SELL ALL"
+                        explanation = "Bearish signal. Consider exiting this position."
+                    elif action == 'HOLD':
+                        recommendation = "HOLD/REVIEW"
+                        explanation = tr.get('reason', 'No clear signal. Review manually.')
+                    else:
+                        recommendation = "N/A"
+                        explanation = "Unable to analyze."
+
                     holdings_data.append({
                         "Ticker": tick,
                         "Shares": shares,
                         "Price": f"${price:.2f}" if price > 0 else "N/A",
-                        "Value": f"${value:,.0f}" if value > 0 else "N/A"
+                        "Value": f"${value:,.0f}" if value > 0 else "N/A",
+                        "Signal": action,
+                        "Recommendation": recommendation
                     })
+
                 st.dataframe(pd.DataFrame(holdings_data), hide_index=True, use_container_width=True)
-                total_holdings_value = sum(input_holdings.get(t, 0) * r['ticker_results'].get(t, {}).get('stock', {}).get('price', 0)
-                                           for t in input_holdings if r['ticker_results'].get(t, {}).get('stock', {}).get('valid'))
+
+                # Show explanations
+                st.write("**Recommendations Explained:**")
+                for tick, shares in input_holdings.items():
+                    tr = r['ticker_results'].get(tick, {})
+                    action = tr.get('action', 'N/A')
+                    reason = tr.get('reason', 'No analysis available.')
+                    pos = r['positions'].get(tick, {})
+                    target_shares = pos.get('shares', 0) if pos else 0
+
+                    if action == 'BUY' and target_shares > shares:
+                        st.info(f"**{tick}**: Bullish consensus. Buy {int(target_shares - shares)} more shares (target: {int(target_shares)}). {reason}")
+                    elif action == 'BUY':
+                        st.success(f"**{tick}**: Bullish consensus. Hold current {shares} shares. {reason}")
+                    elif action == 'SHORT':
+                        st.error(f"**{tick}**: Bearish consensus. Consider selling all {shares} shares. {reason}")
+                    else:
+                        st.warning(f"**{tick}**: {reason}")
+
                 if total_holdings_value > 0:
-                    st.caption(f"**Total Holdings Value:** ${total_holdings_value:,.0f}")
+                    st.caption(f"**Total Current Holdings Value:** ${total_holdings_value:,.0f}")
 
             st.divider()
 
@@ -1091,36 +1148,46 @@ with tab_portfolio:
             col_chart, col_legend = st.columns([2, 1])
 
             with col_chart:
-                # Prepare pie chart data
+                # Prepare pie chart data with custom colors matching theme
                 pie_data = []
-                for t, p in r["positions"].items():
+                # Define colors matching dark theme (greens for positions, gray for cash)
+                colors = ['#238636', '#2ea043', '#3fb950', '#56d364', '#7ee787', '#58a6ff', '#79c0ff', '#a5d6ff']
+                color_map = {}
+
+                for i, (t, p) in enumerate(r["positions"].items()):
                     pie_data.append({"Category": t, "Value": p["notional"], "Type": "Position"})
-                # Add cash
+                    color_map[t] = colors[i % len(colors)]
+
+                # Add cash with distinct gray color
                 if s['cash'] > 0:
                     pie_data.append({"Category": "Cash", "Value": s['cash'], "Type": "Cash"})
+                    color_map["Cash"] = "#30363d"
 
                 pie_df = pd.DataFrame(pie_data)
+                color_domain = list(color_map.keys())
+                color_range = [color_map[k] for k in color_domain]
 
-                # Create pie chart with Altair
-                pie_chart = alt.Chart(pie_df).mark_arc(innerRadius=50).encode(
+                # Create pie chart with dark theme colors
+                pie_chart = alt.Chart(pie_df).mark_arc(innerRadius=50, stroke='#0d1117', strokeWidth=2).encode(
                     theta=alt.Theta(field="Value", type="quantitative"),
                     color=alt.Color(field="Category", type="nominal",
-                                    scale=alt.Scale(scheme='tableau20'),
+                                    scale=alt.Scale(domain=color_domain, range=color_range),
                                     legend=None),
                     tooltip=[
                         alt.Tooltip('Category:N', title=''),
                         alt.Tooltip('Value:Q', title='Value', format='$,.0f')
                     ]
-                ).properties(height=300).configure_view(strokeWidth=0).configure(background='transparent')
+                ).properties(height=300).configure_view(strokeWidth=0).configure(background='#161b22')
 
                 st.altair_chart(pie_chart, use_container_width=True)
 
             with col_legend:
                 st.write("**Breakdown**")
-                for t, p in r["positions"].items():
-                    st.write(f"**{t}**: ${p['notional']:,.0f} ({p['pct']:.1f}%)")
+                for i, (t, p) in enumerate(r["positions"].items()):
+                    color = colors[i % len(colors)]
+                    st.markdown(f"<span style='color:{color}'>●</span> **{t}**: ${p['notional']:,.0f} ({p['pct']:.1f}%)", unsafe_allow_html=True)
                 if s['cash'] > 0:
-                    st.write(f"**Cash**: ${s['cash']:,.0f} ({s['cash_pct']:.1f}%)")
+                    st.markdown(f"<span style='color:#30363d'>●</span> **Cash**: ${s['cash']:,.0f} ({s['cash_pct']:.1f}%)", unsafe_allow_html=True)
 
         if r["hold_tickers"]:
             st.write("### Not Trading (HOLD)")
@@ -1145,6 +1212,8 @@ with tab_portfolio:
         if input_holdings:
             st.divider()
             st.write("### Your Current Holdings")
+            st.caption("Analysis of your existing positions with recommendations.")
+
             holdings_data = []
             total_holdings_value = 0
             for tick, shares in input_holdings.items():
@@ -1154,22 +1223,34 @@ with tab_portfolio:
                 value = shares * price if price > 0 else 0
                 total_holdings_value += value
 
-                # Get target position
+                # Get target position and action
+                action = tr.get('action', 'N/A')
                 pos = r['positions'].get(tick, {})
                 target_shares = pos.get('shares', 0) if pos else 0
                 delta = target_shares - shares if target_shares else -shares
 
+                # Determine recommendation
+                if action == 'BUY' and target_shares > shares:
+                    recommendation = f"BUY +{int(target_shares - shares)}"
+                elif action == 'BUY':
+                    recommendation = "HOLD"
+                elif action == 'SHORT':
+                    recommendation = "SELL ALL"
+                else:
+                    recommendation = "REVIEW"
+
                 holdings_data.append({
                     "Ticker": tick,
                     "Current": shares,
-                    "Target": int(target_shares) if target_shares else "SELL ALL",
-                    "Delta": f"{delta:+,}" if delta != 0 else "No Change",
+                    "Signal": action,
+                    "Target": int(target_shares) if target_shares else "-",
+                    "Action": recommendation,
                     "Price": f"${price:.2f}" if price > 0 else "N/A",
-                    "Current Value": f"${value:,.0f}" if value > 0 else "N/A"
+                    "Value": f"${value:,.0f}" if value > 0 else "N/A"
                 })
             st.dataframe(pd.DataFrame(holdings_data), hide_index=True, use_container_width=True)
             if total_holdings_value > 0:
-                st.caption(f"**Total Current Holdings Value:** ${total_holdings_value:,.0f}")
+                st.write(f"**Total Current Holdings Value:** ${total_holdings_value:,.0f}")
     else:
         st.info("Run analysis from Signals tab first.")
 
@@ -1585,4 +1666,4 @@ with tab_settings:
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Portfolio Allocator v5.2 | Educational Use Only | Not Financial Advice")
+st.caption("AI Portfolio Allocator v5.3 | Educational Use Only | Not Financial Advice")
