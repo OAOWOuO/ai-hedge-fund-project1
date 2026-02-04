@@ -1,6 +1,8 @@
 """
-AI Portfolio Allocator v5.5
-Updated color palette - professional varied colors, easy to read
+AI Portfolio Allocator v5.6
+- Color indicators for allocation breakdowns
+- Improved correlation matrix with blue-white-red color scheme
+- New Performance tab: Portfolio vs S&P 500 benchmark comparison
 """
 
 import streamlit as st
@@ -899,8 +901,8 @@ st.write("# 📊 AI Portfolio Allocator")
 st.caption("v5.5 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
-tab_signals, tab_portfolio, tab_analytics, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
-    "📈 Signals", "💼 Portfolio", "📊 Analytics", "📋 Trades", "🧠 Analysts", "🔍 Securities", "⚙️ Settings"
+tab_signals, tab_portfolio, tab_analytics, tab_performance, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
+    "📈 Signals", "💼 Portfolio", "📊 Analytics", "🏆 Performance", "📋 Trades", "🧠 Analysts", "🔍 Securities", "⚙️ Settings"
 ])
 
 
@@ -1345,9 +1347,9 @@ with tab_portfolio:
                 st.write("**Breakdown**")
                 for i, (t, p) in enumerate(r["positions"].items()):
                     color = colors[i % len(colors)]
-                    st.markdown(f"<span style='color:{color}'>●</span> **{t}**: ${p['notional']:,.0f} ({p['pct']:.1f}%)", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color:{color}; font-size:20px'>■</span> **{t}**: ${p['notional']:,.0f} ({p['pct']:.1f}%)", unsafe_allow_html=True)
                 if s['cash'] > 0:
-                    st.markdown(f"<span style='color:#30363d'>●</span> **Cash**: ${s['cash']:,.0f} ({s['cash_pct']:.1f}%)", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color:#6e7681; font-size:20px'>■</span> **Cash**: ${s['cash']:,.0f} ({s['cash_pct']:.1f}%)", unsafe_allow_html=True)
 
         if r["hold_tickers"]:
             st.write("### Not Trading (HOLD)")
@@ -1553,7 +1555,7 @@ with tab_analytics:
                         st.write("**Breakdown**")
                         for i, (sector, pct) in enumerate(sorted(sector_data.items(), key=lambda x: -x[1])):
                             color = sector_colors[i % len(sector_colors)]
-                            st.markdown(f"<span style='color:{color}'>●</span> **{sector}**: {pct:.1f}%", unsafe_allow_html=True)
+                            st.markdown(f"<span style='color:{color}; font-size:20px'>■</span> **{sector}**: {pct:.1f}%", unsafe_allow_html=True)
 
                 st.divider()
 
@@ -1575,12 +1577,13 @@ with tab_analytics:
 
                     corr_df = pd.DataFrame(corr_data)
 
+                    # Blue-White-Red diverging color scheme for better clarity
                     heatmap = alt.Chart(corr_df).mark_rect().encode(
                         x=alt.X('Ticker1:N', title=None, axis=alt.Axis(labelColor='#8b949e')),
                         y=alt.Y('Ticker2:N', title=None, axis=alt.Axis(labelColor='#8b949e')),
                         color=alt.Color('Correlation:Q',
-                                        scale=alt.Scale(scheme='redyellowgreen', domain=[-1, 1]),
-                                        legend=alt.Legend(title="Correlation")),
+                                        scale=alt.Scale(domain=[-1, 0, 1], range=['#58a6ff', '#ffffff', '#f85149']),
+                                        legend=alt.Legend(title="Correlation", labelColor='#8b949e', titleColor='#e6edf3')),
                         tooltip=[
                             alt.Tooltip('Ticker1:N', title=''),
                             alt.Tooltip('Ticker2:N', title=''),
@@ -1654,6 +1657,194 @@ with tab_analytics:
             st.info("No positions to analyze. Run analysis with actionable signals first.")
     else:
         st.info("Run analysis from Signals tab first.")
+
+
+# ============== PERFORMANCE TAB ==============
+with tab_performance:
+    st.subheader("Performance vs Benchmark")
+
+    if st.session_state.result:
+        r = st.session_state.result
+        ticker_results = r.get("ticker_results", {})
+        positions = r.get("positions", {})
+
+        if positions and ticker_results:
+            # Get benchmark data (S&P 500 via SPY)
+            @st.cache_data(ttl=600)
+            def get_benchmark_data(period: str = "1y"):
+                try:
+                    import yfinance as yf
+                    spy = yf.Ticker("SPY")
+                    hist = spy.history(period=period)
+                    if not hist.empty:
+                        return hist
+                except:
+                    pass
+                return None
+
+            benchmark_data = get_benchmark_data()
+
+            if benchmark_data is not None and len(benchmark_data) > 20:
+                # Calculate portfolio returns based on positions
+                portfolio_weights = {}
+                total_value = sum(p['notional'] for p in positions.values())
+                for ticker, pos in positions.items():
+                    portfolio_weights[ticker] = pos['notional'] / total_value if total_value > 0 else 0
+
+                # Get aligned returns for portfolio
+                all_returns = {}
+                common_dates = None
+
+                for ticker in positions.keys():
+                    if ticker in ticker_results:
+                        tr = ticker_results[ticker]
+                        if isinstance(tr, dict) and "history" in tr and tr["history"] is not None:
+                            hist = tr["history"]
+                            if "Close" in hist.columns and len(hist) > 1:
+                                returns = hist["Close"].pct_change().dropna()
+                                all_returns[ticker] = returns
+                                if common_dates is None:
+                                    common_dates = set(returns.index)
+                                else:
+                                    common_dates = common_dates & set(returns.index)
+
+                if common_dates and len(common_dates) > 20:
+                    common_dates = sorted(list(common_dates))
+
+                    # Calculate weighted portfolio returns
+                    portfolio_daily_returns = pd.Series(0.0, index=common_dates)
+                    for ticker, weight in portfolio_weights.items():
+                        if ticker in all_returns:
+                            ticker_returns = all_returns[ticker].reindex(common_dates).fillna(0)
+                            portfolio_daily_returns += weight * ticker_returns
+
+                    # Get benchmark returns aligned to same dates
+                    benchmark_returns = benchmark_data["Close"].pct_change().dropna()
+                    benchmark_returns = benchmark_returns.reindex(common_dates).fillna(0)
+
+                    # Calculate cumulative returns
+                    portfolio_cumulative = (1 + portfolio_daily_returns).cumprod() - 1
+                    benchmark_cumulative = (1 + benchmark_returns).cumprod() - 1
+
+                    # Performance metrics
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    portfolio_total_return = portfolio_cumulative.iloc[-1] * 100
+                    benchmark_total_return = benchmark_cumulative.iloc[-1] * 100
+                    outperformance = portfolio_total_return - benchmark_total_return
+
+                    # Calculate additional metrics
+                    portfolio_vol = portfolio_daily_returns.std() * np.sqrt(252) * 100
+                    benchmark_vol = benchmark_returns.std() * np.sqrt(252) * 100
+
+                    # Tracking error
+                    tracking_diff = portfolio_daily_returns - benchmark_returns
+                    tracking_error = tracking_diff.std() * np.sqrt(252) * 100
+
+                    # Information ratio
+                    info_ratio = (tracking_diff.mean() * 252) / (tracking_diff.std() * np.sqrt(252)) if tracking_diff.std() > 0 else 0
+
+                    with col1:
+                        st.metric("Portfolio Return", f"{portfolio_total_return:.1f}%",
+                                  delta=f"{outperformance:+.1f}% vs S&P 500" if outperformance != 0 else None)
+                    with col2:
+                        st.metric("S&P 500 Return", f"{benchmark_total_return:.1f}%")
+                    with col3:
+                        st.metric("Tracking Error", f"{tracking_error:.1f}%",
+                                  help="Standard deviation of the difference between portfolio and benchmark returns")
+                    with col4:
+                        st.metric("Information Ratio", f"{info_ratio:.2f}",
+                                  help="Risk-adjusted outperformance: excess return / tracking error")
+
+                    st.divider()
+
+                    # Performance chart
+                    st.write("### Cumulative Performance Comparison")
+
+                    perf_data = pd.DataFrame({
+                        'Date': list(common_dates) * 2,
+                        'Return': list(portfolio_cumulative * 100) + list(benchmark_cumulative * 100),
+                        'Type': ['Portfolio'] * len(common_dates) + ['S&P 500 (SPY)'] * len(common_dates)
+                    })
+
+                    perf_chart = alt.Chart(perf_data).mark_line(strokeWidth=2).encode(
+                        x=alt.X('Date:T', title=None, axis=alt.Axis(labelColor='#8b949e', format='%b %Y')),
+                        y=alt.Y('Return:Q', title='Return (%)', axis=alt.Axis(labelColor='#8b949e', titleColor='#e6edf3')),
+                        color=alt.Color('Type:N',
+                                       scale=alt.Scale(domain=['Portfolio', 'S&P 500 (SPY)'], range=['#58a6ff', '#f0883e']),
+                                       legend=alt.Legend(title=None, orient='top', labelColor='#c9d1d9')),
+                        tooltip=[
+                            alt.Tooltip('Date:T', title='Date', format='%Y-%m-%d'),
+                            alt.Tooltip('Type:N', title=''),
+                            alt.Tooltip('Return:Q', title='Return', format='.2f')
+                        ]
+                    ).properties(height=350).configure_view(strokeWidth=0).configure(background='#161b22')
+
+                    st.altair_chart(perf_chart, use_container_width=True)
+
+                    # Performance interpretation
+                    st.divider()
+                    st.write("### Performance Analysis")
+
+                    if outperformance > 5:
+                        st.success(f"**Strong Outperformance**: Portfolio beat S&P 500 by {outperformance:.1f}% over this period.")
+                    elif outperformance > 0:
+                        st.info(f"**Modest Outperformance**: Portfolio beat S&P 500 by {outperformance:.1f}%.")
+                    elif outperformance > -5:
+                        st.warning(f"**Slight Underperformance**: Portfolio trailed S&P 500 by {abs(outperformance):.1f}%.")
+                    else:
+                        st.error(f"**Underperformance**: Portfolio trailed S&P 500 by {abs(outperformance):.1f}%. Consider rebalancing.")
+
+                    # Risk-adjusted analysis
+                    col_left, col_right = st.columns(2)
+
+                    with col_left:
+                        st.write("**Volatility Comparison**")
+                        vol_data = pd.DataFrame({
+                            'Type': ['Portfolio', 'S&P 500'],
+                            'Volatility': [portfolio_vol, benchmark_vol]
+                        })
+                        vol_chart = alt.Chart(vol_data).mark_bar().encode(
+                            x=alt.X('Type:N', title=None, axis=alt.Axis(labelColor='#8b949e')),
+                            y=alt.Y('Volatility:Q', title='Annualized Volatility (%)', axis=alt.Axis(labelColor='#8b949e')),
+                            color=alt.Color('Type:N', scale=alt.Scale(domain=['Portfolio', 'S&P 500'], range=['#58a6ff', '#f0883e']), legend=None),
+                            tooltip=[alt.Tooltip('Type:N'), alt.Tooltip('Volatility:Q', format='.1f')]
+                        ).properties(height=200).configure_view(strokeWidth=0).configure(background='#161b22')
+                        st.altair_chart(vol_chart, use_container_width=True)
+
+                        if portfolio_vol < benchmark_vol:
+                            st.caption(f"✅ Lower volatility than benchmark ({portfolio_vol:.1f}% vs {benchmark_vol:.1f}%)")
+                        else:
+                            st.caption(f"⚠️ Higher volatility than benchmark ({portfolio_vol:.1f}% vs {benchmark_vol:.1f}%)")
+
+                    with col_right:
+                        st.write("**Risk-Adjusted Metrics**")
+                        metrics_table = pd.DataFrame({
+                            'Metric': ['Total Return', 'Volatility', 'Return/Risk Ratio', 'Information Ratio'],
+                            'Portfolio': [f"{portfolio_total_return:.1f}%", f"{portfolio_vol:.1f}%",
+                                         f"{portfolio_total_return/portfolio_vol:.2f}" if portfolio_vol > 0 else "N/A",
+                                         f"{info_ratio:.2f}"],
+                            'S&P 500': [f"{benchmark_total_return:.1f}%", f"{benchmark_vol:.1f}%",
+                                       f"{benchmark_total_return/benchmark_vol:.2f}" if benchmark_vol > 0 else "N/A",
+                                       "1.00 (baseline)"]
+                        })
+                        st.dataframe(metrics_table, hide_index=True, use_container_width=True)
+
+                        if info_ratio > 0.5:
+                            st.caption("✅ Strong information ratio indicates skillful active management")
+                        elif info_ratio > 0:
+                            st.caption("📊 Positive information ratio - outperformance is somewhat risk-adjusted")
+                        else:
+                            st.caption("⚠️ Negative information ratio - consider index tracking")
+
+                else:
+                    st.warning("Insufficient overlapping price data to compare performance. Need at least 20 trading days.")
+            else:
+                st.warning("Unable to fetch S&P 500 benchmark data.")
+        else:
+            st.info("No positions to analyze. Run analysis with actionable signals first.")
+    else:
+        st.info("Run analysis from Signals tab first to see performance comparison.")
 
 
 # ============== TRADES TAB ==============
