@@ -1,6 +1,6 @@
 """
-AI Hedge Fund Terminal v4.5
-Fixes: audit trail code boxes, restore checkbox UI with expander stability
+AI Hedge Fund Terminal v4.6
+Fixes: Select All/Clear All sync, dark theme contrast for all UI elements
 """
 
 import streamlit as st
@@ -18,9 +18,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ============== CSS ==============
+# ============== CSS - COMPREHENSIVE DARK THEME ==============
 st.markdown("""
 <style>
+    /* Base dark theme */
     .main { background: #0d1117; }
     .stApp { background: #0d1117; }
     #MainMenu, footer, header { visibility: hidden; }
@@ -29,15 +30,13 @@ st.markdown("""
     h1, h2, h3, h4 { color: #e6edf3 !important; font-weight: 600 !important; }
     p, span, label, li, div { color: #c9d1d9 !important; }
 
-    /* Remove code-style boxes everywhere */
+    /* Remove code-style boxes */
     [data-testid="stMetricValue"], [data-testid="stMetricDelta"] {
         background: transparent !important;
         border: none !important;
         padding: 0 !important;
         font-family: inherit !important;
     }
-
-    /* Remove code styling from text that might have $ or numbers */
     code {
         background: transparent !important;
         border: none !important;
@@ -52,13 +51,178 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { background: transparent; color: #8b949e; border-radius: 6px; padding: 8px 16px; }
     .stTabs [aria-selected="true"] { background: #238636 !important; color: white !important; }
 
-    /* Static dataframes */
-    [data-testid="stDataFrame"] { pointer-events: none; }
+    /* Expander styling - dark background */
+    .streamlit-expanderHeader {
+        background: #161b22 !important;
+        color: #e6edf3 !important;
+        border-radius: 8px;
+    }
+    .streamlit-expanderHeader:hover {
+        background: #21262d !important;
+    }
+    .streamlit-expanderContent {
+        background: #0d1117 !important;
+        border: 1px solid #30363d !important;
+        border-top: none !important;
+    }
+    [data-testid="stExpander"] {
+        background: #161b22 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stExpander"] details {
+        background: #161b22 !important;
+    }
+    [data-testid="stExpander"] summary {
+        background: #161b22 !important;
+        color: #e6edf3 !important;
+    }
+    [data-testid="stExpander"] summary:hover {
+        background: #21262d !important;
+    }
+    [data-testid="stExpander"] [data-testid="stMarkdownContainer"] {
+        background: transparent !important;
+    }
 
-    /* Audit step styling */
-    .audit-step {
-        padding: 4px 0;
-        color: #c9d1d9;
+    /* Button styling */
+    .stButton > button {
+        background: #21262d !important;
+        color: #c9d1d9 !important;
+        border: 1px solid #30363d !important;
+        border-radius: 6px !important;
+    }
+    .stButton > button:hover {
+        background: #30363d !important;
+        border-color: #8b949e !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: #238636 !important;
+        color: white !important;
+        border: 1px solid #238636 !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #2ea043 !important;
+    }
+    .stButton > button[kind="secondary"] {
+        background: #21262d !important;
+        color: #c9d1d9 !important;
+    }
+
+    /* Selectbox / dropdown styling */
+    [data-baseweb="select"] {
+        background: #161b22 !important;
+    }
+    [data-baseweb="select"] > div {
+        background: #161b22 !important;
+        border-color: #30363d !important;
+        color: #c9d1d9 !important;
+    }
+    [data-baseweb="popover"] {
+        background: #161b22 !important;
+        border: 1px solid #30363d !important;
+    }
+    [data-baseweb="menu"] {
+        background: #161b22 !important;
+    }
+    [data-baseweb="menu"] li {
+        background: #161b22 !important;
+        color: #c9d1d9 !important;
+    }
+    [data-baseweb="menu"] li:hover {
+        background: #21262d !important;
+    }
+    [role="listbox"] {
+        background: #161b22 !important;
+    }
+    [role="option"] {
+        background: #161b22 !important;
+        color: #c9d1d9 !important;
+    }
+    [role="option"]:hover {
+        background: #21262d !important;
+    }
+
+    /* Input styling */
+    .stTextInput > div > div > input {
+        background: #161b22 !important;
+        color: #c9d1d9 !important;
+        border-color: #30363d !important;
+    }
+    .stTextArea > div > div > textarea {
+        background: #161b22 !important;
+        color: #c9d1d9 !important;
+        border-color: #30363d !important;
+    }
+    .stNumberInput > div > div > input {
+        background: #161b22 !important;
+        color: #c9d1d9 !important;
+        border-color: #30363d !important;
+    }
+
+    /* Checkbox styling */
+    .stCheckbox > label {
+        color: #c9d1d9 !important;
+    }
+    .stCheckbox > label > span {
+        color: #c9d1d9 !important;
+    }
+
+    /* Slider styling */
+    .stSlider > div > div > div {
+        background: #30363d !important;
+    }
+
+    /* Alert boxes */
+    .stAlert {
+        background: #161b22 !important;
+        border: 1px solid #30363d !important;
+    }
+    [data-baseweb="notification"] {
+        background: #161b22 !important;
+    }
+
+    /* Info/Warning/Success/Error boxes */
+    .stInfo, [data-testid="stNotification"][data-type="info"] {
+        background: #0d2237 !important;
+        border: 1px solid #58a6ff !important;
+    }
+    .stWarning, [data-testid="stNotification"][data-type="warning"] {
+        background: #3d2a1f !important;
+        border: 1px solid #d29922 !important;
+    }
+    .stSuccess, [data-testid="stNotification"][data-type="success"] {
+        background: #1f3d2a !important;
+        border: 1px solid #3fb950 !important;
+    }
+    .stError, [data-testid="stNotification"][data-type="error"] {
+        background: #3d1f1f !important;
+        border: 1px solid #f85149 !important;
+    }
+
+    /* Dataframe styling */
+    [data-testid="stDataFrame"] { pointer-events: none; }
+    .stDataFrame {
+        background: #161b22 !important;
+    }
+
+    /* Download button */
+    .stDownloadButton > button {
+        background: #21262d !important;
+        color: #c9d1d9 !important;
+        border: 1px solid #30363d !important;
+    }
+    .stDownloadButton > button:hover {
+        background: #30363d !important;
+    }
+
+    /* Caption styling */
+    .stCaption {
+        color: #8b949e !important;
+    }
+
+    /* Divider */
+    hr {
+        border-color: #30363d !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -237,7 +401,6 @@ def run_analysis(tickers: List[str], analysts: List[str], risk_level: float, cap
     mode = ALLOCATION_MODES[mode_key]
     timestamp = datetime.now()
 
-    # Audit trail - use simple strings without special formatting
     audit = {"inputs": {"tickers": tickers, "analysts": sorted_analysts, "capital": capital,
                         "mode": mode["name"], "risk_level": risk_level}, "steps": []}
 
@@ -420,8 +583,6 @@ def run_analysis(tickers: List[str], analysts: List[str], risk_level: float, cap
 # ============== SESSION STATE ==============
 if "result" not in st.session_state:
     st.session_state.result = None
-if "selected_analysts" not in st.session_state:
-    st.session_state.selected_analysts = set(ALL_ANALYST_KEYS)
 if "custom_params" not in st.session_state:
     st.session_state.custom_params = {}
 if "use_custom" not in st.session_state:
@@ -430,14 +591,35 @@ if "chart_period" not in st.session_state:
     st.session_state.chart_period = "1y"
 if "risk_level" not in st.session_state:
     st.session_state.risk_level = 0.5
-# Track which analyst category expander is open
 if "open_analyst_category" not in st.session_state:
     st.session_state.open_analyst_category = None
 
+# Initialize checkbox states for all analysts (default: all selected)
+for key in ALL_ANALYST_KEYS:
+    if f"chk_{key}" not in st.session_state:
+        st.session_state[f"chk_{key}"] = True
+
+
+def select_all_analysts():
+    """Set all analyst checkboxes to True."""
+    for key in ALL_ANALYST_KEYS:
+        st.session_state[f"chk_{key}"] = True
+
+
+def clear_all_analysts():
+    """Set all analyst checkboxes to False."""
+    for key in ALL_ANALYST_KEYS:
+        st.session_state[f"chk_{key}"] = False
+
+
+def get_selected_analysts():
+    """Get list of currently selected analyst keys based on checkbox states."""
+    return [key for key in ALL_ANALYST_KEYS if st.session_state.get(f"chk_{key}", False)]
+
 
 # ============== HEADER ==============
-st.markdown("# 📊 AI Hedge Fund Terminal")
-st.caption("v4.5 | Yahoo Finance (15-20 min delayed)")
+st.write("# 📊 AI Hedge Fund Terminal")
+st.caption("v4.6 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
 tab_signals, tab_portfolio, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
@@ -480,7 +662,7 @@ with tab_signals:
 
         st.divider()
 
-        st.markdown("**Risk Settings**")
+        st.write("**Risk Settings**")
         risk_level = st.slider("Risk Level", 0.0, 1.0, st.session_state.risk_level, 0.05, key="risk_slider")
         st.session_state.risk_level = risk_level
 
@@ -499,44 +681,31 @@ with tab_signals:
 
         st.divider()
 
-        # ANALYSTS - CHECKBOX UI WITH EXPANDER STABILITY FIX
-        st.markdown("**AI Analysts**")
+        # ANALYSTS - CHECKBOX UI WITH PROPER SELECT ALL/CLEAR ALL SYNC
+        st.write("**AI Analysts**")
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Select All", key="btn_select_all", use_container_width=True):
-                st.session_state.selected_analysts = set(ALL_ANALYST_KEYS)
-                st.rerun()
+            if st.button("Select All", key="btn_select_all", use_container_width=True, on_click=select_all_analysts):
+                pass  # on_click handles it
         with col2:
-            if st.button("Clear All", key="btn_clear_all", use_container_width=True):
-                st.session_state.selected_analysts = set()
-                st.rerun()
+            if st.button("Clear All", key="btn_clear_all", use_container_width=True, on_click=clear_all_analysts):
+                pass  # on_click handles it
 
         # Create expanders for each category
-        # Use a container to manage state
         for cat, analysts in ANALYST_CATEGORIES.items():
-            cat_count = sum(1 for k in analysts if k in st.session_state.selected_analysts)
+            cat_count = sum(1 for k in analysts if st.session_state.get(f"chk_{k}", False))
             cat_id = cat.replace(" ", "_")
-
-            # Check if this category should be expanded
             is_expanded = st.session_state.open_analyst_category == cat_id
 
             with st.expander(f"{cat} ({cat_count}/{len(analysts)})", expanded=is_expanded):
                 for key, info in analysts.items():
-                    is_selected = key in st.session_state.selected_analysts
+                    # Checkbox reads directly from session_state via key
+                    st.checkbox(info["name"], key=f"chk_{key}", help=info["desc"])
 
-                    # When checkbox changes, track which category we're in
-                    if st.checkbox(info["name"], value=is_selected, key=f"chk_{key}", help=info["desc"]):
-                        if key not in st.session_state.selected_analysts:
-                            st.session_state.selected_analysts.add(key)
-                            st.session_state.open_analyst_category = cat_id
-                    else:
-                        if key in st.session_state.selected_analysts:
-                            st.session_state.selected_analysts.discard(key)
-                            st.session_state.open_analyst_category = cat_id
-
-        selected_count = len(st.session_state.selected_analysts)
-        st.markdown(f"**{selected_count}/{len(ALL_ANALYST_KEYS)}** analysts selected")
+        selected_analysts = get_selected_analysts()
+        selected_count = len(selected_analysts)
+        st.write(f"**{selected_count}/{len(ALL_ANALYST_KEYS)}** analysts selected")
 
         st.divider()
 
@@ -546,7 +715,7 @@ with tab_signals:
             custom = st.session_state.custom_params if st.session_state.use_custom else None
             st.session_state.result = run_analysis(
                 tickers=tickers,
-                analysts=list(st.session_state.selected_analysts),
+                analysts=selected_analysts,
                 risk_level=st.session_state.risk_level,
                 capital=capital,
                 holdings=holdings,
@@ -554,7 +723,7 @@ with tab_signals:
                 allow_fractional=allow_fractional,
                 custom_params=custom
             )
-            st.session_state.open_analyst_category = None  # Reset after run
+            st.session_state.open_analyst_category = None
             st.rerun()
 
         if not can_run:
@@ -572,7 +741,6 @@ with tab_signals:
             st.subheader("Results")
             st.caption(f"Mode: {r['config']['mode']} | {r['config']['analyst_count']} analysts | {r['timestamp'].strftime('%H:%M:%S')}")
 
-            # Summary metrics - use st.write to avoid code boxes
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.write("**Capital**")
@@ -592,9 +760,7 @@ with tab_signals:
 
             st.divider()
 
-            # ALLOCATION AUDIT TRAIL - Fixed rendering
             st.write("### Allocation Audit Trail")
-
             audit = r["audit"]
             st.write(f"**Inputs:** {len(audit['inputs']['tickers'])} tickers, {len(audit['inputs']['analysts'])} analysts, "
                      f"${audit['inputs']['capital']:,.0f} capital, {audit['inputs']['mode']}, {audit['inputs']['risk_level']:.0%} risk")
@@ -608,14 +774,11 @@ with tab_signals:
                     st.success(step_text)
                 elif step_type == "info":
                     st.info(step_text)
-                elif step_type == "alloc":
-                    st.write(f"→ {step_text}")
                 else:
                     st.write(f"→ {step_text}")
 
             st.divider()
 
-            # Exposure
             st.write("### Exposure")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
@@ -636,9 +799,7 @@ with tab_signals:
 
             st.divider()
 
-            # Recommendations
             st.write("### Recommendations")
-
             for ticker, tr in r["ticker_results"].items():
                 stock = tr["stock"]
                 pos = r["positions"].get(ticker)
@@ -684,7 +845,6 @@ with tab_signals:
 
                 st.divider()
 
-            # Export
             st.write("### Export")
             if r["positions"]:
                 csv_rows = ["Ticker,Action,Shares,Entry,Notional,StopLoss,TakeProfit,Confidence"]
@@ -859,14 +1019,12 @@ with tab_analysts:
         st.divider()
 
         st.write("### Consensus Breakdown")
-
         for ticker, tr in r["ticker_results"].items():
             with st.expander(f"**{ticker}** → {tr['action']} ({tr['avg_confidence']:.0f}% confidence)"):
                 st.write(f"**Final Decision:** {tr['action']}")
                 st.write(f"**Reason:** {tr['reason']}")
                 st.write(f"**Vote:** {tr['bullish']} Bullish / {tr['neutral']} Neutral / {tr['bearish']} Bearish")
 
-                # Show ALL analyst arguments
                 for signal_type, label, emoji in [("BULLISH", "Bullish", "📈"), ("BEARISH", "Bearish", "📉"), ("NEUTRAL", "Neutral", "⏸️")]:
                     sigs = [s for s in tr["signals"] if s["signal"] == signal_type]
                     if sigs:
@@ -876,14 +1034,12 @@ with tab_analysts:
                             st.write(f"**{s['analyst']}** ({s['confidence']:.0f}%)")
                             st.write(f"- Thesis: {s['thesis']}")
                             st.write(f"- Drivers: {s['drivers']}")
-                            st.write(f"- Horizon: {s['horizon']}")
-                            st.write(f"- Risks: {s['risks']}")
     else:
         st.write("### All Available Analysts")
         for cat, analysts in ANALYST_CATEGORIES.items():
             st.write(f"#### {cat}")
             for key, info in analysts.items():
-                selected = "✅" if key in st.session_state.selected_analysts else "⬜"
+                selected = "✅" if st.session_state.get(f"chk_{key}", False) else "⬜"
                 st.write(f"{selected} **{info['name']}** - {info['desc']}")
 
 
@@ -1043,4 +1199,4 @@ with tab_settings:
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Hedge Fund Terminal v4.5 | Educational Use Only | Not Financial Advice")
+st.caption("AI Hedge Fund Terminal v4.6 | Educational Use Only | Not Financial Advice")
