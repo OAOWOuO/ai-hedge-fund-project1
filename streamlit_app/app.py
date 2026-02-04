@@ -1471,16 +1471,85 @@ with tab_portfolio:
             with col3:
                 st.metric("Total to Sell", f"${total_to_sell:,.0f}")
 
-            # Drift assessment
-            if max_drift < 2:
-                st.success("**Portfolio is well-balanced.** No rebalancing needed.")
-            elif max_drift < 5:
-                st.info("**Minor drift detected.** Consider rebalancing if transaction costs are low.")
-            else:
-                st.warning("**Significant drift detected.** Rebalancing recommended to maintain target allocation.")
+            # Drift assessment and rebalance action
+            col_assess, col_action = st.columns([3, 1])
+
+            with col_assess:
+                if max_drift < 2:
+                    st.success("**Portfolio is well-balanced.** No rebalancing needed.")
+                elif max_drift < 5:
+                    st.info("**Minor drift detected.** Consider rebalancing if transaction costs are low.")
+                else:
+                    st.warning("**Significant drift detected.** Rebalancing recommended to maintain target allocation.")
+
+            with col_action:
+                if max_drift >= 2:  # Only show button if there's meaningful drift
+                    if st.button("🔄 Apply Rebalance", type="primary", use_container_width=True):
+                        # Recalculate positions to equal weight
+                        new_positions = {}
+                        for ticker, pos in r["positions"].items():
+                            target_notional = total_portfolio * target_weight
+                            new_shares = target_notional / pos['price'] if pos['price'] > 0 else pos['shares']
+
+                            new_positions[ticker] = {
+                                **pos,  # Keep all existing data
+                                'shares': new_shares,
+                                'notional': target_notional,
+                                'pct': target_weight * 100,
+                            }
+
+                        # Update session state
+                        st.session_state.result["positions"] = new_positions
+                        st.session_state.result["summary"]["deployed"] = total_portfolio
+                        st.session_state.result["summary"]["deployed_pct"] = (total_portfolio / r["config"]["capital"]) * 100
+
+                        st.success("✅ Portfolio rebalanced to equal weight!")
+                        st.rerun()
 
             # Rebalance table
             st.dataframe(pd.DataFrame(rebalance_data), hide_index=True, use_container_width=True)
+
+            # Manual rebalance option
+            with st.expander("📝 Custom Rebalance", expanded=False):
+                st.caption("Manually adjust target weights for each position.")
+
+                custom_weights = {}
+                cols = st.columns(min(len(r["positions"]), 4))
+
+                for i, (ticker, pos) in enumerate(r["positions"].items()):
+                    with cols[i % len(cols)]:
+                        current_pct = pos['notional'] / total_portfolio * 100
+                        custom_weights[ticker] = st.number_input(
+                            f"{ticker} %",
+                            min_value=0.0,
+                            max_value=100.0,
+                            value=round(current_pct, 1),
+                            step=1.0,
+                            key=f"custom_weight_{ticker}"
+                        )
+
+                total_custom = sum(custom_weights.values())
+
+                if abs(total_custom - 100) > 0.1:
+                    st.warning(f"⚠️ Weights sum to {total_custom:.1f}%. Must equal 100%.")
+                else:
+                    if st.button("Apply Custom Weights", use_container_width=True):
+                        new_positions = {}
+                        for ticker, pos in r["positions"].items():
+                            new_weight = custom_weights[ticker] / 100
+                            target_notional = total_portfolio * new_weight
+                            new_shares = target_notional / pos['price'] if pos['price'] > 0 else pos['shares']
+
+                            new_positions[ticker] = {
+                                **pos,
+                                'shares': new_shares,
+                                'notional': target_notional,
+                                'pct': custom_weights[ticker],
+                            }
+
+                        st.session_state.result["positions"] = new_positions
+                        st.success("✅ Custom weights applied!")
+                        st.rerun()
 
             # Allocation comparison chart
             chart_data = []
