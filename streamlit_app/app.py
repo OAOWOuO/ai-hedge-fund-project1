@@ -1,8 +1,9 @@
 """
-AI Portfolio Allocator v5.6
+AI Portfolio Allocator v5.7
 - Color indicators for allocation breakdowns
 - Improved correlation matrix with blue-white-red color scheme
 - New Performance tab: Portfolio vs S&P 500 benchmark comparison
+- Fixed date alignment: uses benchmark timeline with forward-fill for missing data
 """
 
 import streamlit as st
@@ -1691,10 +1692,12 @@ with tab_performance:
                 for ticker, pos in positions.items():
                     portfolio_weights[ticker] = pos['notional'] / total_value if total_value > 0 else 0
 
-                # Get aligned returns for portfolio
-                all_returns = {}
-                common_dates = None
+                # Use benchmark dates as reference (more practical approach)
+                benchmark_returns = benchmark_data["Close"].pct_change().dropna()
+                reference_dates = benchmark_returns.index
 
+                # Get returns for each ticker, aligned to benchmark dates
+                all_returns = {}
                 for ticker in positions.keys():
                     if ticker in ticker_results:
                         tr = ticker_results[ticker]
@@ -1702,25 +1705,16 @@ with tab_performance:
                             hist = tr["history"]
                             if "Close" in hist.columns and len(hist) > 1:
                                 returns = hist["Close"].pct_change().dropna()
-                                all_returns[ticker] = returns
-                                if common_dates is None:
-                                    common_dates = set(returns.index)
-                                else:
-                                    common_dates = common_dates & set(returns.index)
+                                # Align to benchmark dates, forward-fill gaps then fill remaining with 0
+                                aligned = returns.reindex(reference_dates).ffill().fillna(0)
+                                all_returns[ticker] = aligned
 
-                if common_dates and len(common_dates) > 20:
-                    common_dates = sorted(list(common_dates))
-
-                    # Calculate weighted portfolio returns
-                    portfolio_daily_returns = pd.Series(0.0, index=common_dates)
+                if len(all_returns) > 0 and len(reference_dates) > 5:
+                    # Calculate weighted portfolio returns using benchmark timeline
+                    portfolio_daily_returns = pd.Series(0.0, index=reference_dates)
                     for ticker, weight in portfolio_weights.items():
                         if ticker in all_returns:
-                            ticker_returns = all_returns[ticker].reindex(common_dates).fillna(0)
-                            portfolio_daily_returns += weight * ticker_returns
-
-                    # Get benchmark returns aligned to same dates
-                    benchmark_returns = benchmark_data["Close"].pct_change().dropna()
-                    benchmark_returns = benchmark_returns.reindex(common_dates).fillna(0)
+                            portfolio_daily_returns += weight * all_returns[ticker]
 
                     # Calculate cumulative returns
                     portfolio_cumulative = (1 + portfolio_daily_returns).cumprod() - 1
@@ -1762,9 +1756,9 @@ with tab_performance:
                     st.write("### Cumulative Performance Comparison")
 
                     perf_data = pd.DataFrame({
-                        'Date': list(common_dates) * 2,
+                        'Date': list(reference_dates) * 2,
                         'Return': list(portfolio_cumulative * 100) + list(benchmark_cumulative * 100),
-                        'Type': ['Portfolio'] * len(common_dates) + ['S&P 500 (SPY)'] * len(common_dates)
+                        'Type': ['Portfolio'] * len(reference_dates) + ['S&P 500 (SPY)'] * len(reference_dates)
                     })
 
                     perf_chart = alt.Chart(perf_data).mark_line(strokeWidth=2).encode(
@@ -1838,7 +1832,7 @@ with tab_performance:
                             st.caption("⚠️ Negative information ratio - consider index tracking")
 
                 else:
-                    st.warning("Insufficient overlapping price data to compare performance. Need at least 20 trading days.")
+                    st.warning("Unable to retrieve price history for portfolio positions. Check that tickers are valid.")
             else:
                 st.warning("Unable to fetch S&P 500 benchmark data.")
         else:
