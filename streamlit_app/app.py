@@ -1,12 +1,13 @@
 """
-AI Hedge Fund Terminal v4.9
-Fixes: Chart colors, non-draggable charts, volume chart, improved news
+AI Hedge Fund Terminal v5.0
+Fixes: Interactive charts with tooltips, improved news fetching
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import hashlib
+import altair as alt
 from datetime import datetime
 from typing import Dict, List
 
@@ -201,10 +202,11 @@ st.markdown("""
         background: #161b22 !important;
     }
 
-    /* Chart styling - non-draggable, custom colors */
-    [data-testid="stVegaLiteChart"] { pointer-events: none; }
-    [data-testid="stArrowVegaLiteChart"] { pointer-events: none; }
-    .stLineChart, .stAreaChart { pointer-events: none; }
+    /* Chart styling */
+    .stLineChart, .stAreaChart, .stBarChart {
+        background: #161b22 !important;
+        border-radius: 8px;
+    }
 
     /* Download button */
     .stDownloadButton > button {
@@ -395,38 +397,45 @@ def fetch_news(ticker: str) -> List[dict]:
     try:
         import yfinance as yf
         stock = yf.Ticker(ticker)
-        # Try multiple ways to get news
-        news = None
+
+        # Get news - yfinance 0.2.40+ uses .news property
+        news = []
         try:
             news = stock.news
-        except:
+        except Exception:
             pass
+
         if not news:
-            try:
-                news = getattr(stock, 'news', None)
-            except:
-                pass
-        if not news or len(news) == 0:
             return []
+
         results = []
-        for item in news[:10]:  # Limit to 10 articles
+        for item in news[:10]:
             try:
-                title = item.get("title", "")
+                # Handle different yfinance versions
+                title = item.get("title") or item.get("headline", "")
                 if not title:
                     continue
-                pub_time = item.get("providerPublishTime")
+
+                # Get timestamp - different field names in different versions
+                pub_time = item.get("providerPublishTime") or item.get("datetime") or item.get("published")
                 ts = None
                 if pub_time:
                     try:
-                        ts = datetime.fromtimestamp(pub_time)
+                        if isinstance(pub_time, (int, float)):
+                            ts = datetime.fromtimestamp(pub_time)
+                        elif isinstance(pub_time, str):
+                            ts = datetime.fromisoformat(pub_time.replace('Z', '+00:00'))
                     except:
                         pass
+
+                # Get link - different field names
+                link = item.get("link") or item.get("url", "")
+
                 results.append({
                     "title": title,
-                    "publisher": item.get("publisher", "Unknown"),
-                    "link": item.get("link", ""),
-                    "timestamp": ts,
-                    "type": item.get("type", "article")
+                    "publisher": item.get("publisher") or item.get("source", "Unknown"),
+                    "link": link,
+                    "timestamp": ts
                 })
             except:
                 continue
@@ -718,7 +727,7 @@ def get_selected_analysts():
 
 # ============== HEADER ==============
 st.write("# 📊 AI Hedge Fund Terminal")
-st.caption("v4.9 | Yahoo Finance (15-20 min delayed)")
+st.caption("v5.0 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
 tab_signals, tab_portfolio, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
@@ -1241,17 +1250,33 @@ with tab_securities:
                 # Prepare chart data
                 chart_data = hist.reset_index()
                 chart_data['Date'] = pd.to_datetime(chart_data['Date']).dt.tz_localize(None)
+                chart_data['Price'] = chart_data['Close'].round(2)
+                chart_data['Vol_M'] = (chart_data['Volume'] / 1e6).round(2)
 
-                # Price chart with green color
+                # Interactive Price Line Chart with tooltip
                 st.write("**Price**")
-                price_chart_data = chart_data[['Date', 'Close']].set_index('Date')
-                st.area_chart(price_chart_data, color="#238636", use_container_width=True)
+                price_chart = alt.Chart(chart_data).mark_line(color='#238636', strokeWidth=2).encode(
+                    x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%b %d', labelColor='#8b949e', titleColor='#8b949e')),
+                    y=alt.Y('Price:Q', title='Price ($)', scale=alt.Scale(zero=False), axis=alt.Axis(labelColor='#8b949e', titleColor='#8b949e')),
+                    tooltip=[
+                        alt.Tooltip('Date:T', title='Date', format='%b %d, %Y'),
+                        alt.Tooltip('Price:Q', title='Price', format='$.2f')
+                    ]
+                ).properties(height=250).configure_view(strokeWidth=0).configure(background='#161b22')
+                st.altair_chart(price_chart, use_container_width=True)
 
-                # Volume chart with blue color
+                # Interactive Volume Bar Chart with tooltip
                 if 'Volume' in chart_data.columns and chart_data['Volume'].sum() > 0:
                     st.write("**Volume**")
-                    volume_chart_data = chart_data[['Date', 'Volume']].set_index('Date')
-                    st.bar_chart(volume_chart_data, color="#58a6ff", use_container_width=True)
+                    volume_chart = alt.Chart(chart_data).mark_bar(color='#58a6ff', opacity=0.7).encode(
+                        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%b %d', labelColor='#8b949e', titleColor='#8b949e')),
+                        y=alt.Y('Volume:Q', title='Volume', axis=alt.Axis(labelColor='#8b949e', titleColor='#8b949e')),
+                        tooltip=[
+                            alt.Tooltip('Date:T', title='Date', format='%b %d, %Y'),
+                            alt.Tooltip('Vol_M:Q', title='Volume (M)', format='.2f')
+                        ]
+                    ).properties(height=150).configure_view(strokeWidth=0).configure(background='#161b22')
+                    st.altair_chart(volume_chart, use_container_width=True)
 
                 # Stats
                 if len(hist) > 1:
@@ -1465,4 +1490,4 @@ with tab_settings:
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Hedge Fund Terminal v4.9 | Educational Use Only | Not Financial Advice")
+st.caption("AI Hedge Fund Terminal v5.0 | Educational Use Only | Not Financial Advice")
