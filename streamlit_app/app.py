@@ -1,6 +1,6 @@
 """
-AI Hedge Fund Terminal v5.0
-Fixes: Interactive charts with tooltips, improved news fetching
+AI Portfolio Allocator v5.1
+Renamed from AI Hedge Fund Terminal to AI Portfolio Allocator
 """
 
 import streamlit as st
@@ -13,7 +13,7 @@ from typing import Dict, List
 
 # ============== PAGE CONFIG ==============
 st.set_page_config(
-    page_title="AI Hedge Fund Terminal",
+    page_title="AI Portfolio Allocator",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -726,8 +726,8 @@ def get_selected_analysts():
 
 
 # ============== HEADER ==============
-st.write("# 📊 AI Hedge Fund Terminal")
-st.caption("v5.0 | Yahoo Finance (15-20 min delayed)")
+st.write("# 📊 AI Portfolio Allocator")
+st.caption("v5.1 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
 tab_signals, tab_portfolio, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
@@ -1490,4 +1490,4 @@ with tab_settings:
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Hedge Fund Terminal v5.0 | Educational Use Only | Not Financial Advice")
+st.caption("AI Portfolio Allocator v5.1 | Educational Use Only | Not Financial Advice")
