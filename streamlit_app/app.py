@@ -1,6 +1,6 @@
 """
-AI Portfolio Allocator v5.1
-Renamed from AI Hedge Fund Terminal to AI Portfolio Allocator
+AI Portfolio Allocator v5.2
+Holdings display, analyst signals table fix, pie chart allocation
 """
 
 import streamlit as st
@@ -727,7 +727,7 @@ def get_selected_analysts():
 
 # ============== HEADER ==============
 st.write("# 📊 AI Portfolio Allocator")
-st.caption("v5.1 | Yahoo Finance (15-20 min delayed)")
+st.caption("v5.2 | Yahoo Finance (15-20 min delayed)")
 
 # ============== TABS ==============
 tab_signals, tab_portfolio, tab_trades, tab_analysts, tab_securities, tab_settings = st.tabs([
@@ -869,6 +869,30 @@ with tab_signals:
                 st.write("**Max Loss**")
                 st.write(f"### ${max_loss:,.0f}")
 
+            # Show Current Holdings if any were entered
+            input_holdings = r['config'].get('holdings', {})
+            if input_holdings:
+                st.divider()
+                st.write("### Current Holdings (Input)")
+                holdings_data = []
+                for tick, shares in input_holdings.items():
+                    # Get price from ticker_results if available
+                    tr = r['ticker_results'].get(tick, {})
+                    stock = tr.get('stock', {})
+                    price = stock.get('price', 0) if stock.get('valid') else 0
+                    value = shares * price if price > 0 else 0
+                    holdings_data.append({
+                        "Ticker": tick,
+                        "Shares": shares,
+                        "Price": f"${price:.2f}" if price > 0 else "N/A",
+                        "Value": f"${value:,.0f}" if value > 0 else "N/A"
+                    })
+                st.dataframe(pd.DataFrame(holdings_data), hide_index=True, use_container_width=True)
+                total_holdings_value = sum(input_holdings.get(t, 0) * r['ticker_results'].get(t, {}).get('stock', {}).get('price', 0)
+                                           for t in input_holdings if r['ticker_results'].get(t, {}).get('stock', {}).get('valid'))
+                if total_holdings_value > 0:
+                    st.caption(f"**Total Holdings Value:** ${total_holdings_value:,.0f}")
+
             st.divider()
 
             st.write("### Allocation Audit Trail")
@@ -972,7 +996,7 @@ with tab_signals:
                         st.write(f"### ${pos['tp_price']:.2f}")
 
                 # Show all analyst signals - fixed to always display complete list
-                with st.expander(f"View {tr['total']} analyst signals"):
+                with st.expander(f"View all {tr['total']} analyst signals"):
                     sig_data = []
                     for sig in sorted(tr["signals"], key=lambda x: (-x["confidence"], x["analyst"])):
                         sig_data.append({
@@ -982,7 +1006,10 @@ with tab_signals:
                             "Confidence": f"{sig['confidence']:.0f}%"
                         })
                     if sig_data:
-                        st.dataframe(pd.DataFrame(sig_data), hide_index=True, use_container_width=True)
+                        # Calculate height based on number of rows (35px per row + header)
+                        table_height = min(400, 35 + len(sig_data) * 35)
+                        st.dataframe(pd.DataFrame(sig_data), hide_index=True, use_container_width=True, height=table_height)
+                        st.caption(f"Showing {len(sig_data)} analysts: {tr['bullish']} Bullish, {tr['neutral']} Neutral, {tr['bearish']} Bearish")
                     else:
                         st.write("No analyst signals generated.")
 
@@ -1058,6 +1085,43 @@ with tab_portfolio:
                 })
             st.dataframe(pd.DataFrame(pos_data), hide_index=True, use_container_width=True)
 
+            # Allocation Pie Chart
+            st.divider()
+            st.write("### Allocation Chart")
+            col_chart, col_legend = st.columns([2, 1])
+
+            with col_chart:
+                # Prepare pie chart data
+                pie_data = []
+                for t, p in r["positions"].items():
+                    pie_data.append({"Category": t, "Value": p["notional"], "Type": "Position"})
+                # Add cash
+                if s['cash'] > 0:
+                    pie_data.append({"Category": "Cash", "Value": s['cash'], "Type": "Cash"})
+
+                pie_df = pd.DataFrame(pie_data)
+
+                # Create pie chart with Altair
+                pie_chart = alt.Chart(pie_df).mark_arc(innerRadius=50).encode(
+                    theta=alt.Theta(field="Value", type="quantitative"),
+                    color=alt.Color(field="Category", type="nominal",
+                                    scale=alt.Scale(scheme='tableau20'),
+                                    legend=None),
+                    tooltip=[
+                        alt.Tooltip('Category:N', title=''),
+                        alt.Tooltip('Value:Q', title='Value', format='$,.0f')
+                    ]
+                ).properties(height=300).configure_view(strokeWidth=0).configure(background='transparent')
+
+                st.altair_chart(pie_chart, use_container_width=True)
+
+            with col_legend:
+                st.write("**Breakdown**")
+                for t, p in r["positions"].items():
+                    st.write(f"**{t}**: ${p['notional']:,.0f} ({p['pct']:.1f}%)")
+                if s['cash'] > 0:
+                    st.write(f"**Cash**: ${s['cash']:,.0f} ({s['cash_pct']:.1f}%)")
+
         if r["hold_tickers"]:
             st.write("### Not Trading (HOLD)")
             for t, reason in r["hold_tickers"].items():
@@ -1075,6 +1139,37 @@ with tab_portfolio:
         with col3:
             st.write("**Cap Blocked**")
             st.write(f"### ${s['cap_blocked']:,.0f}")
+
+        # Show Current Holdings if any were entered
+        input_holdings = r['config'].get('holdings', {})
+        if input_holdings:
+            st.divider()
+            st.write("### Your Current Holdings")
+            holdings_data = []
+            total_holdings_value = 0
+            for tick, shares in input_holdings.items():
+                tr = r['ticker_results'].get(tick, {})
+                stock = tr.get('stock', {})
+                price = stock.get('price', 0) if stock.get('valid') else 0
+                value = shares * price if price > 0 else 0
+                total_holdings_value += value
+
+                # Get target position
+                pos = r['positions'].get(tick, {})
+                target_shares = pos.get('shares', 0) if pos else 0
+                delta = target_shares - shares if target_shares else -shares
+
+                holdings_data.append({
+                    "Ticker": tick,
+                    "Current": shares,
+                    "Target": int(target_shares) if target_shares else "SELL ALL",
+                    "Delta": f"{delta:+,}" if delta != 0 else "No Change",
+                    "Price": f"${price:.2f}" if price > 0 else "N/A",
+                    "Current Value": f"${value:,.0f}" if value > 0 else "N/A"
+                })
+            st.dataframe(pd.DataFrame(holdings_data), hide_index=True, use_container_width=True)
+            if total_holdings_value > 0:
+                st.caption(f"**Total Current Holdings Value:** ${total_holdings_value:,.0f}")
     else:
         st.info("Run analysis from Signals tab first.")
 
@@ -1490,4 +1585,4 @@ with tab_settings:
 
 # ============== FOOTER ==============
 st.divider()
-st.caption("AI Portfolio Allocator v5.1 | Educational Use Only | Not Financial Advice")
+st.caption("AI Portfolio Allocator v5.2 | Educational Use Only | Not Financial Advice")
