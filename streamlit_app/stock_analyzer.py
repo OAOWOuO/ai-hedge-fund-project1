@@ -1490,7 +1490,7 @@ Thresholds: STRONG BUY (>=35) | BUY (>=15) | HOLD (-5 to 15) | SELL (-25 to -5) 
 def show_stock_analyzer():
     """Main function to display the institutional stock analyzer."""
 
-    # Back button
+    # Back button and header
     col_back, col_title = st.columns([1, 11])
     with col_back:
         if st.button("← Back", key="back_analyzer"):
@@ -1500,25 +1500,19 @@ def show_stock_analyzer():
         st.write("# 📈 Institutional Stock Analyzer")
         st.caption("CFA-Style Technical & Fundamental Analysis with Price Forecasting")
 
-    # Input section
-    col_input, col_spacer = st.columns([1, 3])
-
-    with col_input:
-        ticker = st.text_input("Enter Ticker Symbol", value="AAPL", key="inst_ticker")
-        ticker = ticker.strip().upper()
-        analyze_btn = st.button("🔍 Run Full Analysis", type="primary", use_container_width=True)
-
     if 'inst_data' not in st.session_state:
         st.session_state.inst_data = None
 
-    if analyze_btn and ticker:
-        with st.spinner(f"Running comprehensive analysis on {ticker}..."):
-            st.session_state.inst_data = fetch_comprehensive_data(ticker)
+    # ===== MAIN TABS (always visible) =====
+    tab_tech, tab_fund, tab_conclusion, tab_chat = st.tabs(["📊 Technical Analysis", "📋 Fundamental Analysis", "🎯 Conclusion & Forecast", "💬 AI Chat"])
 
-    if st.session_state.inst_data and st.session_state.inst_data.get("valid"):
+    # Pre-compute analysis if data exists
+    data = None
+    tech_df = tech_analysis = fund_analysis = valuation = forecasts = recommendation = supports = resistances = None
+    has_data = st.session_state.inst_data and st.session_state.inst_data.get("valid")
+
+    if has_data:
         data = st.session_state.inst_data
-
-        # Calculate all analyses
         hist = data['hist_1y']
         tech_df = calculate_technical_indicators(hist)
         tech_analysis = generate_technical_signals(data, tech_df)
@@ -1528,122 +1522,143 @@ def show_stock_analyzer():
         recommendation = generate_recommendation(data, tech_analysis, fund_analysis, valuation, forecasts)
         supports, resistances = identify_support_resistance(hist)
 
-        # ===== HEADER SUMMARY =====
-        st.divider()
+    # ============== TECHNICAL TAB ==============
+    with tab_tech:
+        # Configuration panel + results
+        col_config, col_results = st.columns([1, 3])
 
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Stock", f"{data['name']}", f"{data['ticker']}")
-        with col2:
-            change_pct = ((data['price'] - data.get('prev_close', data['price'])) / data.get('prev_close', data['price']) * 100) if data.get('prev_close') else 0
-            st.metric("Price", f"${data['price']:.2f}", f"{change_pct:+.2f}%")
-        with col3:
-            st.metric("Target", f"${recommendation['target_price']:.2f}", f"{recommendation['upside']:+.1f}%")
-        with col4:
-            st.markdown(f"""
-            <div style="background:{recommendation['action_color']}22; border:2px solid {recommendation['action_color']}; border-radius:8px; padding:10px; text-align:center;">
-                <div style="font-size:24px; font-weight:700; color:{recommendation['action_color']};">{recommendation['action']}</div>
-                <div style="font-size:12px; color:#8b949e;">Combined Score: {recommendation['combined_score']:.0f}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        with col_config:
+            st.write("### Configuration")
+            ticker = st.text_input("Ticker Symbol", value="AAPL", key="inst_ticker")
+            ticker = ticker.strip().upper()
+            analyze_btn = st.button("🔍 Run Full Analysis", type="primary", use_container_width=True)
 
-        # ===== MAIN TABS =====
-        tab_tech, tab_fund, tab_conclusion, tab_chat = st.tabs(["📊 Technical Analysis", "📋 Fundamental Analysis", "🎯 Conclusion & Forecast", "💬 AI Chat"])
+            if analyze_btn and ticker:
+                with st.spinner(f"Analyzing {ticker}..."):
+                    st.session_state.inst_data = fetch_comprehensive_data(ticker)
+                    st.rerun()
 
-        # ============== TECHNICAL TAB ==============
-        with tab_tech:
-            st.write("### Technical Analysis Summary")
+            # Stock summary sidebar
+            if has_data:
+                st.divider()
+                st.write(f"### {data['name']}")
+                st.caption(f"{data['sector']} · {data['industry']}")
+                change_pct = ((data['price'] - data.get('prev_close', data['price'])) / data.get('prev_close', data['price']) * 100) if data.get('prev_close') else 0
+                st.metric("Price", f"${data['price']:.2f}", f"{change_pct:+.2f}%")
+                st.write(f"**Market Cap:** ${data['market_cap']/1e9:.1f}B")
+                st.write(f"**52W Range:** ${data['low_52w']:.0f} - ${data['high_52w']:.0f}")
+                if data['high_52w'] > data['low_52w']:
+                    pos = (data['price'] - data['low_52w']) / (data['high_52w'] - data['low_52w'])
+                    st.progress(min(1.0, max(0.0, pos)), text=f"{pos*100:.0f}% of range")
 
-            # Score breakdown
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1:
-                st.metric("Overall", f"{tech_analysis['score_pct']:.0f}%", tech_analysis['rating'])
-            with col2:
-                st.metric("Trend", f"{tech_analysis['breakdown']['trend']['score']}/{tech_analysis['breakdown']['trend']['max']}")
-            with col3:
-                st.metric("Momentum", f"{tech_analysis['breakdown']['momentum']['score']}/{tech_analysis['breakdown']['momentum']['max']}")
-            with col4:
-                st.metric("Volatility", f"{tech_analysis['breakdown']['volatility']['score']}/{tech_analysis['breakdown']['volatility']['max']}")
-            with col5:
-                st.metric("Volume", f"{tech_analysis['breakdown']['volume']['score']}/{tech_analysis['breakdown']['volume']['max']}")
+                st.divider()
+                st.markdown(f"""
+                <div style="background:{recommendation['action_color']}22; border:2px solid {recommendation['action_color']}; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:22px; font-weight:700; color:{recommendation['action_color']};">{recommendation['action']}</div>
+                    <div style="font-size:13px; color:#c9d1d9;">Target: ${recommendation['target_price']:.2f} ({recommendation['upside']:+.1f}%)</div>
+                    <div style="font-size:11px; color:#8b949e;">Score: {recommendation['combined_score']:.0f}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-            st.divider()
+        with col_results:
+            if not has_data:
+                st.info("Enter a ticker symbol and click **Run Full Analysis** to generate an institutional-grade research report.")
+            else:
+                st.write("### Technical Analysis Summary")
 
-            # Price Chart
-            st.write("### Price Chart with Moving Averages")
-            chart_data = tech_df.reset_index()
-            chart_data['Date'] = pd.to_datetime(chart_data['Date']).dt.tz_localize(None)
+                # Score breakdown
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    st.metric("Overall", f"{tech_analysis['score_pct']:.0f}%", tech_analysis['rating'])
+                with col2:
+                    st.metric("Trend", f"{tech_analysis['breakdown']['trend']['score']}/{tech_analysis['breakdown']['trend']['max']}")
+                with col3:
+                    st.metric("Momentum", f"{tech_analysis['breakdown']['momentum']['score']}/{tech_analysis['breakdown']['momentum']['max']}")
+                with col4:
+                    st.metric("Volatility", f"{tech_analysis['breakdown']['volatility']['score']}/{tech_analysis['breakdown']['volatility']['max']}")
+                with col5:
+                    st.metric("Volume", f"{tech_analysis['breakdown']['volume']['score']}/{tech_analysis['breakdown']['volume']['max']}")
 
-            price_chart = alt.Chart(chart_data).mark_line(color='#58a6ff', strokeWidth=2).encode(
-                x=alt.X('Date:T', title=None),
-                y=alt.Y('Close:Q', title='Price ($)', scale=alt.Scale(zero=False)),
-                tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), alt.Tooltip('Close:Q', format='$.2f', title='Price')]
-            )
-            ma50 = alt.Chart(chart_data).mark_line(color='#f0883e', strokeWidth=1.5, strokeDash=[5,5]).encode(x='Date:T', y='SMA_50:Q')
-            ma200 = alt.Chart(chart_data).mark_line(color='#a371f7', strokeWidth=1.5, strokeDash=[5,5]).encode(x='Date:T', y='SMA_200:Q')
+                st.divider()
 
-            # Support/Resistance lines
-            if supports:
-                support_df = pd.DataFrame({'y': [supports[-1]]})
-                support_line = alt.Chart(support_df).mark_rule(color='#3fb950', strokeDash=[3,3]).encode(y='y:Q')
-                price_chart = price_chart + support_line
-            if resistances:
-                resist_df = pd.DataFrame({'y': [resistances[-1]]})
-                resist_line = alt.Chart(resist_df).mark_rule(color='#f85149', strokeDash=[3,3]).encode(y='y:Q')
-                price_chart = price_chart + resist_line
+                # Price Chart
+                st.write("### Price Chart with Moving Averages")
+                chart_data = tech_df.reset_index()
+                chart_data['Date'] = pd.to_datetime(chart_data['Date']).dt.tz_localize(None)
 
-            st.altair_chart((price_chart + ma50 + ma200).properties(height=350).configure_view(strokeWidth=0).configure(background='#161b22'), use_container_width=True)
-            st.caption("🔵 Price  🟠 SMA50  🟣 SMA200  🟢 Support  🔴 Resistance")
-
-            # RSI and MACD
-            col_rsi, col_macd = st.columns(2)
-
-            with col_rsi:
-                st.write("### RSI (14)")
-                rsi_chart = alt.Chart(chart_data.tail(100)).mark_line(color='#58a6ff').encode(
+                price_chart = alt.Chart(chart_data).mark_line(color='#58a6ff', strokeWidth=2).encode(
                     x=alt.X('Date:T', title=None),
-                    y=alt.Y('RSI:Q', scale=alt.Scale(domain=[0, 100]), title='RSI')
+                    y=alt.Y('Close:Q', title='Price ($)', scale=alt.Scale(zero=False)),
+                    tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), alt.Tooltip('Close:Q', format='$.2f', title='Price')]
                 )
-                rules = alt.Chart(pd.DataFrame({'y': [30, 70]})).mark_rule(strokeDash=[3,3], color='#6e7681').encode(y='y:Q')
-                st.altair_chart((rsi_chart + rules).properties(height=200).configure_view(strokeWidth=0).configure(background='#161b22'), use_container_width=True)
+                ma50 = alt.Chart(chart_data).mark_line(color='#f0883e', strokeWidth=1.5, strokeDash=[5,5]).encode(x='Date:T', y='SMA_50:Q')
+                ma200 = alt.Chart(chart_data).mark_line(color='#a371f7', strokeWidth=1.5, strokeDash=[5,5]).encode(x='Date:T', y='SMA_200:Q')
 
-                rsi_val = tech_df['RSI'].iloc[-1]
-                if rsi_val > 70:
-                    st.error(f"RSI: {rsi_val:.1f} - OVERBOUGHT")
-                elif rsi_val < 30:
-                    st.success(f"RSI: {rsi_val:.1f} - OVERSOLD")
-                else:
-                    st.info(f"RSI: {rsi_val:.1f} - Neutral")
+                # Support/Resistance lines
+                if supports:
+                    support_df = pd.DataFrame({'y': [supports[-1]]})
+                    support_line = alt.Chart(support_df).mark_rule(color='#3fb950', strokeDash=[3,3]).encode(y='y:Q')
+                    price_chart = price_chart + support_line
+                if resistances:
+                    resist_df = pd.DataFrame({'y': [resistances[-1]]})
+                    resist_line = alt.Chart(resist_df).mark_rule(color='#f85149', strokeDash=[3,3]).encode(y='y:Q')
+                    price_chart = price_chart + resist_line
 
-            with col_macd:
-                st.write("### MACD")
-                macd_c = alt.Chart(chart_data.tail(100)).mark_line(color='#58a6ff').encode(x='Date:T', y='MACD:Q')
-                sig_c = alt.Chart(chart_data.tail(100)).mark_line(color='#f0883e').encode(x='Date:T', y='MACD_Signal:Q')
-                hist_c = alt.Chart(chart_data.tail(100)).mark_bar(opacity=0.5).encode(
-                    x='Date:T', y='MACD_Hist:Q',
-                    color=alt.condition(alt.datum.MACD_Hist > 0, alt.value('#3fb950'), alt.value('#f85149'))
-                )
-                st.altair_chart((hist_c + macd_c + sig_c).properties(height=200).configure_view(strokeWidth=0).configure(background='#161b22'), use_container_width=True)
+                st.altair_chart((price_chart + ma50 + ma200).properties(height=350).configure_view(strokeWidth=0).configure(background='#161b22'), use_container_width=True)
+                st.caption("🔵 Price  🟠 SMA50  🟣 SMA200  🟢 Support  🔴 Resistance")
 
-                if tech_df['MACD'].iloc[-1] > tech_df['MACD_Signal'].iloc[-1]:
-                    st.success("MACD: Bullish (above signal)")
-                else:
-                    st.warning("MACD: Bearish (below signal)")
+                # RSI and MACD
+                col_rsi, col_macd = st.columns(2)
 
-            # Technical Signals Table
-            st.write("### Technical Signal Details")
-            tech_signals_df = pd.DataFrame(tech_analysis['signals'])
-            if not tech_signals_df.empty:
-                st.dataframe(
-                    tech_signals_df[['category', 'indicator', 'signal', 'score', 'detail', 'threshold']],
-                    hide_index=True,
-                    use_container_width=True
-                )
+                with col_rsi:
+                    st.write("### RSI (14)")
+                    rsi_chart = alt.Chart(chart_data.tail(100)).mark_line(color='#58a6ff').encode(
+                        x=alt.X('Date:T', title=None),
+                        y=alt.Y('RSI:Q', scale=alt.Scale(domain=[0, 100]), title='RSI')
+                    )
+                    rules = alt.Chart(pd.DataFrame({'y': [30, 70]})).mark_rule(strokeDash=[3,3], color='#6e7681').encode(y='y:Q')
+                    st.altair_chart((rsi_chart + rules).properties(height=200).configure_view(strokeWidth=0).configure(background='#161b22'), use_container_width=True)
 
-            st.caption("Source: Price & volume data from Yahoo Finance (real-time market feed, 15-20 min delayed). Technical indicators computed from historical OHLCV data.")
+                    rsi_val = tech_df['RSI'].iloc[-1]
+                    if rsi_val > 70:
+                        st.error(f"RSI: {rsi_val:.1f} - OVERBOUGHT")
+                    elif rsi_val < 30:
+                        st.success(f"RSI: {rsi_val:.1f} - OVERSOLD")
+                    else:
+                        st.info(f"RSI: {rsi_val:.1f} - Neutral")
 
-        # ============== FUNDAMENTAL TAB ==============
-        with tab_fund:
+                with col_macd:
+                    st.write("### MACD")
+                    macd_c = alt.Chart(chart_data.tail(100)).mark_line(color='#58a6ff').encode(x='Date:T', y='MACD:Q')
+                    sig_c = alt.Chart(chart_data.tail(100)).mark_line(color='#f0883e').encode(x='Date:T', y='MACD_Signal:Q')
+                    hist_c = alt.Chart(chart_data.tail(100)).mark_bar(opacity=0.5).encode(
+                        x='Date:T', y='MACD_Hist:Q',
+                        color=alt.condition(alt.datum.MACD_Hist > 0, alt.value('#3fb950'), alt.value('#f85149'))
+                    )
+                    st.altair_chart((hist_c + macd_c + sig_c).properties(height=200).configure_view(strokeWidth=0).configure(background='#161b22'), use_container_width=True)
+
+                    if tech_df['MACD'].iloc[-1] > tech_df['MACD_Signal'].iloc[-1]:
+                        st.success("MACD: Bullish (above signal)")
+                    else:
+                        st.warning("MACD: Bearish (below signal)")
+
+                # Technical Signals Table
+                st.write("### Technical Signal Details")
+                tech_signals_df = pd.DataFrame(tech_analysis['signals'])
+                if not tech_signals_df.empty:
+                    st.dataframe(
+                        tech_signals_df[['category', 'indicator', 'signal', 'score', 'detail', 'threshold']],
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+                st.caption("Source: Price & volume data from Yahoo Finance (real-time market feed, 15-20 min delayed). Technical indicators computed from historical OHLCV data.")
+
+    # ============== FUNDAMENTAL TAB ==============
+    with tab_fund:
+        if not has_data:
+            st.info("Run an analysis from the **Technical Analysis** tab to see fundamental data.")
+        else:
             st.write("### Fundamental Analysis Summary")
 
             # Score breakdown
@@ -1754,8 +1769,11 @@ def show_stock_analyzer():
 
             st.caption("Source: Financial data from Yahoo Finance, derived from SEC filings (10-K, 10-Q annual & quarterly reports). Analyst estimates aggregated from major brokerages.")
 
-        # ============== CONCLUSION TAB ==============
-        with tab_conclusion:
+    # ============== CONCLUSION TAB ==============
+    with tab_conclusion:
+        if not has_data:
+            st.info("Run an analysis from the **Technical Analysis** tab to see the conclusion and forecast.")
+        else:
             st.write("### Investment Recommendation")
 
             # Main recommendation box
@@ -1849,8 +1867,20 @@ def show_stock_analyzer():
             </div>
             """, unsafe_allow_html=True)
 
-        # ============== CHAT TAB ==============
-        with tab_chat:
+    # ============== CHAT TAB ==============
+    with tab_chat:
+        if not has_data:
+            st.info("Run an analysis from the **Technical Analysis** tab to enable the AI chat.")
+            st.markdown("""
+            **Example questions you can ask after running an analysis:**
+            - Why is this stock rated BUY/HOLD/SELL?
+            - What would change the recommendation?
+            - Explain the DCF valuation assumptions
+            - What are the biggest risks for this stock?
+            - How does the P/E compare to the sector?
+            - What if revenue growth accelerates to 20%?
+            """)
+        else:
             st.write("### AI Financial Analyst Chat")
             st.caption("Ask questions about the analysis, explore scenarios, or request adjustments. All underlying data sourced from Yahoo Finance (SEC filings, market data, analyst estimates).")
 
@@ -1960,6 +1990,3 @@ Here is the full analysis:
                     if st.button("Clear Chat History", key="clear_chat"):
                         st.session_state[chat_key] = []
                         st.rerun()
-
-    else:
-        st.info("👈 Enter a ticker symbol and click **Run Full Analysis** to generate an institutional-grade research report.")
