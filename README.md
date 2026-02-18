@@ -67,7 +67,7 @@ I set up the AI Hedge Fund repo locally, configured `.env` safely (gitignored), 
 
 - **Run command:** `poetry run python src/main.py --tickers AAPL,MSFT,NVDA`
 - **Saved output:** `product/sections/run_2026-02-02.md`
-- **What I learned:** interactive prompts must run in a real terminal; GitHub pushes require PAT/SSH (password won’t work).
+- **What I learned:** interactive prompts must run in a real terminal; GitHub pushes require PAT/SSH (password won't work).
 - **Feature added next:** auto-save run outputs to `product/sections/` (so results are reproducible and easy to review).
 
 ---
@@ -82,11 +82,11 @@ This system employs several agents working together:
 2. Ben Graham Agent - The godfather of value investing, only buys hidden gems with a margin of safety
 3. Bill Ackman Agent - An activist investor, takes bold positions and pushes for change
 4. Cathie Wood Agent - The queen of growth investing, believes in the power of innovation and disruption
-5. Charlie Munger Agent - Warren Buffett’s partner, only buys wonderful businesses at fair prices
+5. Charlie Munger Agent - Warren Buffett's partner, only buys wonderful businesses at fair prices
 6. Michael Burry Agent - The Big Short contrarian who hunts for deep value
 7. Mohnish Pabrai Agent - The Dhandho investor, who looks for doubles at low risk
-8. Peter Lynch Agent - Practical investor who seeks “ten-baggers” in everyday businesses
-9. Phil Fisher Agent - Meticulous growth investor who uses deep “scuttlebutt” research
+8. Peter Lynch Agent - Practical investor who seeks "ten-baggers" in everyday businesses
+9. Phil Fisher Agent - Meticulous growth investor who uses deep "scuttlebutt" research
 10. Rakesh Jhunjhunwala Agent - The Big Bull of India
 11. Stanley Druckenmiller Agent - Macro legend who hunts for asymmetric opportunities with growth potential
 12. Warren Buffett Agent - The oracle of Omaha, seeks wonderful companies at a fair price
@@ -124,13 +124,13 @@ By using this software, you agree to use it solely for learning purposes.
 
 ## How to Install
 
-Before you can run the AI Hedge Fund, you’ll need to install it and set up your API keys. These steps are common to both the full-stack web application and command line interface.
+Before you can run the AI Hedge Fund, you'll need to install it and set up your API keys. These steps are common to both the full-stack web application and command line interface.
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/OAOWOuO/ai-hedge-fund-project1.git
-cd ai-hedge-fund-project1
+git clone https://github.com/OAOWOuO/-AI-Financial-Advisor.git
+cd -AI-Financial-Advisor
 ```
 
 ### 2. Set up API keys
@@ -221,7 +221,7 @@ Live: <https://ai-hedge-fund-project1-ezfbsk5cgwj62swdmzwe38.streamlit.app/>
 
 ## Feature Requests
 
-If you have a feature request, please open an [issue](https://github.com/OAOWOuO/ai-hedge-fund-project1/issues) and make sure it is tagged with `enhancement`.
+If you have a feature request, please open an [issue](https://github.com/OAOWOuO/-AI-Financial-Advisor/issues) and make sure it is tagged with `enhancement`.
 
 ## License
 
