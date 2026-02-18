@@ -1,9 +1,16 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
+
+# Load OpenAI API key once at module level (env var takes priority over Streamlit secrets)
+try:
+    openai_api_key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
+except Exception:
+    openai_api_key = os.environ.get("OPENAI_API_KEY", "")
 
 
 # ============== DATA FETCHING ==============
@@ -1530,22 +1537,10 @@ def show_stock_analyzer():
         supports, resistances = identify_support_resistance(hist)
 
     # ── AI CHAT (always visible, directly below ticker input) ─────────────────
-    _api_key = ""
-    try:
-        _api_key = st.secrets.get("OPENAI_API_KEY", "")
-    except Exception:
-        pass
-    if not _api_key:
-        import os as _os
-        _api_key = _os.getenv("OPENAI_API_KEY", "")
-
     st.divider()
     st.write("### 💬 AI Financial Analyst Chat")
-    if not _api_key:
-        st.error(
-            "**OPENAI_API_KEY** not configured. "
-            "Add it to your `.env` file or Streamlit secrets to enable AI chat."
-        )
+    if not openai_api_key:
+        st.error("OPENAI_API_KEY not configured on server.")
     elif not has_data:
         st.info("Enter a ticker above and click **Run Full Analysis** to enable the AI chat.")
         st.markdown("""
@@ -1597,7 +1592,7 @@ def show_stock_analyzer():
 
             try:
                 from openai import OpenAI as _OpenAI
-                _client = _OpenAI(api_key=_api_key)
+                _client = _OpenAI(api_key=openai_api_key)
                 _api_msgs = [{"role": "system", "content": _system_msg}]
                 for _m in st.session_state[_chat_key]:
                     _api_msgs.append({"role": _m["role"], "content": _m["content"]})
