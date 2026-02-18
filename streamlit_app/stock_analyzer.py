@@ -1968,4 +1968,3 @@ def show_stock_analyzer():
             financial advisor before making investment decisions. Data provided by Yahoo Finance with 15-20 minute delay.
             </div>
             """, unsafe_allow_html=True)
-
