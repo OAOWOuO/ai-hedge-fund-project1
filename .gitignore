@@ -65,3 +65,10 @@ outputs/
 
 # Alembic (keep migration files, but ignore generated/cache files)
 app/backend/alembic/versions/__pycache__/
+
+# ── Case Q&A overrides ────────────────────────────────────────────────────────
+# Allow course material documents in data/raw/ to be committed
+!data/raw/*.pdf
+!data/raw/*.txt
+# Allow the ChromaDB vector store to be committed so the deployed app works
+!index/chroma.sqlite3
