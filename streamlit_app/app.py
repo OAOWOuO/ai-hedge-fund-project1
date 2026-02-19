@@ -12,15 +12,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── Navigation via URL query params (used by footer anchor links) ──────────
-try:
-    _nav = st.query_params.get("nav", "")
-    if _nav in ("home", "portfolio", "analyzer", "caseqa"):
-        st.session_state["current_view"] = _nav
-        st.query_params.clear()
-except Exception:
-    pass
-
 if "current_view" not in st.session_state:
     st.session_state.current_view = "home"
 
@@ -53,25 +44,42 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     text-align: center;
 }
 .tool-card:hover { border-color: #58a6ff; }
-/* ─── Footer ─── */
+
+/* ─── Footer layout ─── */
 .ft-accent {
     height: 3px;
     background: linear-gradient(90deg, #0f2a4a 0%, #1d4ed8 40%, #3b82f6 60%, #0f2a4a 100%);
     margin-top: 40px;
 }
-.ft-body { background: #05091a; border-top: 1px solid #0d1f38; }
-/* reset all child color so footer classes can apply cleanly */
-.ft-body span, .ft-body div, .ft-body a { color: inherit !important; }
-.ft-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1.7fr;
-    padding: 32px 48px 26px;
+
+/* Background + dividers on the footer columns row.
+   :has(.ft-nav-section) scopes these rules exclusively to the footer. */
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) {
+    background: #05091a !important;
+    border-top: 1px solid #0d1f38;
+    gap: 0 !important;
 }
-.ft-col { padding: 0 32px; }
-.ft-col:first-child { padding-left: 0; }
-.ft-col:last-child  { padding-right: 0; }
-.ft-col:not(:last-child) { border-right: 1px solid #0d1f38; }
-.ft-body .ft-label {
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"]:not(:last-child) {
+    border-right: 1px solid #0d1f38;
+}
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"] > [data-testid="stVerticalBlock"] {
+    padding: 32px 28px !important;
+    background: #05091a !important;
+}
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"]:first-child > [data-testid="stVerticalBlock"] {
+    padding-left: 48px !important;
+}
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"]:last-child > [data-testid="stVerticalBlock"] {
+    padding-right: 48px !important;
+}
+
+/* Reset global text-color override inside footer */
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) span,
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) div,
+[data-testid="stHorizontalBlock"]:has(.ft-nav-section) p { color: inherit !important; }
+
+/* Footer text elements */
+.ft-label {
     display: block;
     font-family: 'SF Mono', 'Consolas', monospace;
     font-size: 9px;
@@ -83,7 +91,7 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     padding-bottom: 8px;
     border-bottom: 1px solid #0d1f38;
 }
-.ft-body .ft-brand-name {
+.ft-brand-name {
     display: block;
     font-family: 'SF Mono', 'Consolas', monospace;
     font-size: 13px;
@@ -94,45 +102,26 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     padding-bottom: 12px;
     border-bottom: 1px solid #0d1f38;
 }
-.ft-body .ft-brand-desc {
+.ft-brand-desc {
     display: block;
     font-size: 12px;
     line-height: 1.7;
     color: #6a9abf !important;
     margin-bottom: 8px;
 }
-.ft-body .ft-brand-sub {
+.ft-brand-sub {
     display: block;
     font-size: 11px;
     line-height: 1.7;
     color: #4a7090 !important;
 }
-.ft-body .ft-nav {
-    display: block;
-    font-size: 12.5px;
-    line-height: 1;
-    color: #7da8c4 !important;
-    text-decoration: none !important;
-    padding: 7px 0 7px 10px;
-    margin-bottom: 2px;
-    border-left: 2px solid transparent;
-    transition: color 0.15s ease, border-left-color 0.15s ease;
-}
-.ft-body .ft-nav:hover {
-    color: #d0e6f5 !important;
-    border-left-color: #2563eb !important;
-    text-decoration: none !important;
-}
-.ft-body .ft-data-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
+.ft-data-row {
     font-size: 11.5px;
     color: #6a9abf !important;
     margin-bottom: 8px;
     line-height: 1.5;
 }
-.ft-body .ft-disclaimer {
+.ft-disclaimer {
     display: block;
     font-size: 10.5px;
     color: #3d6080 !important;
@@ -142,6 +131,41 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     border-top: 1px solid #0a1628;
     font-style: italic;
 }
+
+/* Nav buttons — scoped to the column containing .ft-nav-section */
+[data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button {
+    background: transparent !important;
+    border: none !important;
+    border-left: 2px solid transparent !important;
+    color: #7da8c4 !important;
+    font-size: 12.5px !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    padding: 7px 0 7px 10px !important;
+    min-height: unset !important;
+    height: auto !important;
+    line-height: 1 !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.01em !important;
+}
+[data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button:hover {
+    color: #d0e6f5 !important;
+    border-left: 2px solid #2563eb !important;
+    background: transparent !important;
+}
+[data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button:focus:not(:active) {
+    box-shadow: none !important;
+    border-left: 2px solid transparent !important;
+}
+[data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button:active {
+    background: transparent !important;
+    color: #d0e6f5 !important;
+}
+
+/* Copyright strip */
 .ft-copy {
     background: #030712;
     border-top: 1px solid #0a1628;
@@ -250,32 +274,40 @@ elif st.session_state.current_view == "caseqa":
 
 
 # ============== FOOTER ==============
-# Rendered in the main page (not an iframe) so anchor hrefs work without sandbox restrictions.
-st.markdown("""<div class="ft-accent"></div>
-<div class="ft-body">
-<div class="ft-grid">
-<div class="ft-col">
-<span class="ft-brand-name">🏦 AI FINANCIAL ADVISOR</span>
+st.markdown('<div class="ft-accent"></div>', unsafe_allow_html=True)
+
+ft_col1, ft_col2, ft_col3 = st.columns([2, 1, 1.7])
+
+with ft_col1:
+    st.markdown("""<span class="ft-brand-name">🏦 AI FINANCIAL ADVISOR</span>
 <span class="ft-brand-desc">Institutional-grade investment analytics for portfolio optimization, equity research, and document intelligence.</span>
-<span class="ft-brand-sub">Built for students and practitioners seeking professional-quality financial analysis tools powered by modern AI.</span>
-</div>
-<div class="ft-col">
-<span class="ft-label">Navigation</span>
-<a class="ft-nav" href="?nav=home">Home</a>
-<a class="ft-nav" href="?nav=portfolio">Portfolio Allocator</a>
-<a class="ft-nav" href="?nav=analyzer">Stock Analyzer</a>
-<a class="ft-nav" href="?nav=caseqa">Case Q&amp;A</a>
-</div>
-<div class="ft-col">
-<span class="ft-label">Data &amp; Legal</span>
+<span class="ft-brand-sub">Built for students and practitioners seeking professional-quality financial analysis tools powered by modern AI.</span>""", unsafe_allow_html=True)
+
+with ft_col2:
+    # .ft-nav-section is a CSS marker — it scopes the button styles below to this column only
+    st.markdown('<span class="ft-label">Navigation</span><div class="ft-nav-section"></div>', unsafe_allow_html=True)
+    if st.button("Home", key="ft_home"):
+        st.session_state.current_view = "home"
+        st.rerun()
+    if st.button("Portfolio Allocator", key="ft_portfolio"):
+        st.session_state.current_view = "portfolio"
+        st.rerun()
+    if st.button("Stock Analyzer", key="ft_analyzer"):
+        st.session_state.current_view = "analyzer"
+        st.rerun()
+    if st.button("Case Q&A", key="ft_caseqa"):
+        st.session_state.current_view = "caseqa"
+        st.rerun()
+
+with ft_col3:
+    st.markdown("""<span class="ft-label">Data &amp; Legal</span>
 <div class="ft-data-row">• Market data sourced from Yahoo Finance</div>
 <div class="ft-data-row">• Equity prices delayed 15–20 minutes</div>
 <div class="ft-data-row">• AI signals generated via OpenAI GPT-4o</div>
 <div class="ft-data-row">• Coverage restricted to US-listed equities</div>
-<span class="ft-disclaimer">For educational purposes only. Not financial or investment advice. Past performance is not indicative of future results.</span>
-</div>
-</div>
-<div class="ft-copy">
+<span class="ft-disclaimer">For educational purposes only. Not financial or investment advice. Past performance is not indicative of future results.</span>""", unsafe_allow_html=True)
+
+st.markdown("""<div class="ft-copy">
 <span>© 2025 AI Financial Advisor</span>
 <span class="ft-copy-sep"> | </span>
 <span>Not affiliated with any registered financial institution</span>
@@ -283,5 +315,4 @@ st.markdown("""<div class="ft-accent"></div>
 <span>For educational use only</span>
 <span class="ft-copy-sep"> | </span>
 <span>All rights reserved</span>
-</div>
 </div>""", unsafe_allow_html=True)
