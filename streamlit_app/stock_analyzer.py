@@ -1534,16 +1534,51 @@ def show_stock_analyzer():
                 st.session_state.inst_data = fetch_comprehensive_data(ticker)
                 st.rerun()
 
+        # ── AI CHAT FORM — directly under Run Analysis ──────────────────────────
+        _chat_key = f"chat_history_{data['ticker']}" if has_data else "chat_history_default"
+        if _chat_key not in st.session_state:
+            st.session_state[_chat_key] = []
+
+        with st.form("chat_form", clear_on_submit=True):
+            _prompt = st.text_input("Question", label_visibility="collapsed",
+                                    placeholder="Ask about this stock\u2026")
+            _submitted = st.form_submit_button("Send \u2192", use_container_width=True)
+
+        # ── AI CHAT TITLE + HISTORY ──────────────────────────────────────────────
+        st.write("#### \U0001f4ac AI Financial Analyst")
+        if has_data:
+            st.caption(f"Chatting about **{data['ticker']} \u2014 {data['name']}**. Ask anything about the analysis.")
+        else:
+            st.caption("Run an analysis above to start chatting.")
+
+        _chat_box = st.container(height=320)
+        with _chat_box:
+            if not st.session_state[_chat_key]:
+                st.markdown(
+                    "<p style='color:#6e7681;font-size:13px;text-align:center;padding-top:30px;'>"
+                    "No messages yet \u2014 ask a question below.</p>",
+                    unsafe_allow_html=True
+                )
+            for _msg in st.session_state[_chat_key]:
+                with st.chat_message(_msg["role"]):
+                    st.markdown(_msg["content"])
+
+        if st.session_state.get(_chat_key):
+            if st.button("Clear Chat History", key="clear_chat_top"):
+                st.session_state[_chat_key] = []
+                st.rerun()
+
+        # ── COMPANY PROFILE — last ───────────────────────────────────────────────
+        st.divider()
         if not has_data:
             st.info("Enter a ticker and click **Run Full Analysis**.")
         else:
-            st.divider()
             st.write(f"### {data['name']}")
-            st.caption(f"{data['sector']} · {data['industry']}")
+            st.caption(f"{data['sector']} \u00b7 {data['industry']}")
             change_pct = ((data['price'] - data.get('prev_close', data['price'])) / data.get('prev_close', data['price']) * 100) if data.get('prev_close') else 0
             st.metric("Price", f"${data['price']:.2f}", f"{change_pct:+.2f}%")
             st.write(f"**Market Cap:** ${data['market_cap']/1e9:.1f}B")
-            st.write(f"**52W Range:** ${data['low_52w']:.0f} – ${data['high_52w']:.0f}")
+            st.write(f"**52W Range:** ${data['low_52w']:.0f} \u2013 ${data['high_52w']:.0f}")
             if data['high_52w'] > data['low_52w']:
                 pos = (data['price'] - data['low_52w']) / (data['high_52w'] - data['low_52w'])
                 st.progress(min(1.0, max(0.0, pos)), text=f"{pos*100:.0f}% of range")
@@ -1556,41 +1591,7 @@ def show_stock_analyzer():
 </div>
 """, unsafe_allow_html=True)
 
-
-        # ── AI CHAT — inside left column ────────────────────────────────────────
-        st.divider()
-        st.write("#### 💬 AI Financial Analyst")
-
-        _chat_key = f"chat_history_{data['ticker']}" if has_data else "chat_history_default"
-        if _chat_key not in st.session_state:
-            st.session_state[_chat_key] = []
-
-        if has_data:
-            st.caption(f"Chatting about **{data['ticker']} — {data['name']}**. Ask anything about the analysis.")
-        else:
-            st.caption("Run an analysis above to start chatting.")
-
-        # Compact scrollable chat history
-        _chat_box = st.container(height=320)
-        with _chat_box:
-            if not st.session_state[_chat_key]:
-                st.markdown(
-                    "<p style='color:#6e7681;font-size:13px;text-align:center;padding-top:30px;'>"
-                    "No messages yet — ask a question below.</p>",
-                    unsafe_allow_html=True
-                )
-            for _msg in st.session_state[_chat_key]:
-                with st.chat_message(_msg["role"]):
-                    st.markdown(_msg["content"])
-
-        # Input bar always at bottom
-
-        # Form-based input stays inside the column (unlike st.chat_input which floats)
-        with st.form("chat_form", clear_on_submit=True):
-            _prompt = st.text_input("Question", label_visibility="collapsed",
-                                    placeholder="Ask about this stock…")
-            _submitted = st.form_submit_button("Send →", use_container_width=True)
-
+        # ── FORM SUBMISSION PROCESSING ───────────────────────────────────────────
         if _submitted and _prompt:
             st.session_state[_chat_key].append({"role": "user", "content": _prompt})
             with _chat_box:
@@ -1636,7 +1637,7 @@ def show_stock_analyzer():
                             for _chunk in _stream:
                                 if _chunk.choices[0].delta.content is not None:
                                     _response_text += _chunk.choices[0].delta.content
-                                    _placeholder.markdown(_response_text + "▌")
+                                    _placeholder.markdown(_response_text + "\u258c")
                             _placeholder.markdown(_response_text)
 
                     st.session_state[_chat_key].append({"role": "assistant", "content": _response_text})
@@ -1648,10 +1649,6 @@ def show_stock_analyzer():
                         with st.chat_message("assistant"):
                             st.markdown(_reply)
 
-        if st.session_state.get(_chat_key):
-            if st.button("Clear Chat History", key="clear_chat_top"):
-                st.session_state[_chat_key] = []
-                st.rerun()
 
     with col_right:
         tab_tech, tab_fund, tab_conclusion = st.tabs(
