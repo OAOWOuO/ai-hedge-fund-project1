@@ -1498,7 +1498,7 @@ def show_stock_analyzer():
             st.session_state.current_view = 'home'
             st.rerun()
     with col_title:
-        st.write("# 📈 Institutional Stock Analyzer")
+        st.write("# 📈 Stock Analyzer")
         st.caption("CFA-Style Technical & Fundamental Analysis with Price Forecasting")
 
     if 'inst_data' not in st.session_state:
