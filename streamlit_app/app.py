@@ -23,7 +23,7 @@ st.markdown("""<style>
 h1, h2, h3, h4 { color: #e6edf3 !important; font-weight: 600 !important; }
 p, span, label, li, div { color: #c9d1d9 !important; }
 
-/* ── All product / back buttons ── */
+/* ── Product / back buttons ── */
 .stButton > button {
     background: #1d4ed8 !important;
     color: #e8f0fe !important;
@@ -52,31 +52,32 @@ p, span, label, li, div { color: #c9d1d9 !important; }
 
 /* ═══════════════════════════════════════
    FOOTER
-   One st.columns() element only — zero inter-element gaps.
-   Gradient accent = border-image on the horizontal block.
-   Copyright strip = position:absolute at the bottom of the block.
+   Layout: st.columns() for main content + st.markdown() for copyright.
+   Gap between them closed by setting columns padding-bottom: 2rem and
+   applying margin-top: -2rem on the copyright element-container.
+   Whatever the Streamlit flex gap is (typically 0.5-1rem), the 2rem
+   overlap eats into the columns’ bottom padding (not the content),
+   so the copyright always sits flush with no visible seam.
    ═══════════════════════════════════════ */
 
+/* ─ Footer columns block ─ */
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) {
-    position: relative;
     margin-top: 48px;
-    padding-bottom: 38px;           /* room for the absolute copyright strip */
     background: #07111f !important;
     border-top: 3px solid;
-    border-image: linear-gradient(90deg, #0a1628 0%, #1d4ed8 40%, #3b82f6 60%, #0a1628 100%) 1;
+    border-image: linear-gradient(90deg, #0a1628 0%, #1d4ed8 42%, #3b82f6 58%, #0a1628 100%) 1;
     gap: 0 !important;
     align-items: stretch !important;
 }
-
-/* Column padding & dividers */
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"] {
     padding: 0 !important;
 }
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"]:not(:last-child) {
     border-right: 1px solid #0d1f38;
 }
+/* padding-bottom: 2rem (32px) is the key anchor for the gap-close trick below */
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) > [data-testid="column"] > [data-testid="stVerticalBlock"] {
-    padding: 28px 28px 20px !important;
+    padding: 28px 28px 32px !important;
     background: #07111f !important;
     gap: 0 !important;
 }
@@ -100,19 +101,41 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     padding: 0 !important;
     width: 100% !important;
 }
-
-/* Suppress global color override inside footer */
+/* Reset the global color override so footer text uses its own colors */
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) span,
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) div,
 [data-testid="stHorizontalBlock"]:has(.ft-nav-section) p { color: inherit !important; }
 
-/* ── Footer typography ── */
+/* ─ Copyright strip: margin-top -2rem eats into the columns’ 32px bottom padding,
+   guaranteeing flush contact regardless of the Streamlit flex gap value ─ */
+[data-testid="element-container"]:has(.ft-copy) {
+    margin-top: -2rem !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+}
+.ft-copy {
+    background: #030c17;
+    border-top: 1px solid #0d1f38;
+    padding: 10px 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 9.5px;
+    color: #253d52 !important;
+    letter-spacing: 0.05em;
+    line-height: 1.4;
+}
+.ft-copy-sep { color: #142333 !important; }
+
+/* ─ Footer typography ─ */
 .ft-section-label {
     display: block;
     font-family: 'SF Mono', 'Consolas', monospace;
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
     color: #3b82f6 !important;
     margin-bottom: 16px;
@@ -126,27 +149,26 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     font-weight: 700;
     letter-spacing: 0.16em;
     color: #b8cfe8 !important;
-    margin-bottom: 14px;
-    padding-bottom: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom: 1px solid #0d1f38;
 }
 .ft-brand-body {
     display: block;
     font-size: 12px;
     line-height: 1.75;
-    color: #5a86a8 !important;
+    color: #4e7a9a !important;
 }
 .ft-data-item {
     font-size: 11.5px;
-    color: #5a86a8 !important;
+    color: #4e7a9a !important;
     margin-bottom: 7px;
     line-height: 1.5;
-    padding-left: 2px;
 }
 .ft-legal-note {
     display: block;
     font-size: 10px;
-    color: #2e5068 !important;
+    color: #2a4d65 !important;
     line-height: 1.65;
     margin-top: 14px;
     padding-top: 10px;
@@ -154,57 +176,39 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     font-style: italic;
 }
 
-/* ── Footer nav buttons ── */
+/* ─ Footer nav buttons: rounded, soft blue pill style ─ */
 [data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button {
-    background: transparent !important;
-    border: 1px solid #16304d !important;
-    border-left: 2px solid #2a5580 !important;
-    border-radius: 3px !important;
-    color: #6a9dbf !important;
+    background: rgba(29, 78, 216, 0.06) !important;
+    border: 1px solid rgba(59, 130, 246, 0.18) !important;
+    border-radius: 6px !important;
+    color: #6aa3c8 !important;
     font-size: 12px !important;
     font-weight: 400 !important;
     text-align: left !important;
     justify-content: flex-start !important;
-    padding: 7px 10px !important;
+    padding: 7px 12px !important;
     min-height: unset !important;
     height: auto !important;
-    line-height: 1 !important;
+    line-height: 1.2 !important;
     width: 100% !important;
     box-shadow: none !important;
     letter-spacing: 0.01em !important;
-    margin-bottom: 4px !important;
+    margin-bottom: 5px !important;
+    transition: all 0.15s ease !important;
 }
 [data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button:hover {
-    background: rgba(37, 99, 235, 0.09) !important;
-    border-color: #2563eb !important;
-    border-left-color: #3b82f6 !important;
-    color: #c8e0f4 !important;
+    background: rgba(29, 78, 216, 0.14) !important;
+    border-color: rgba(59, 130, 246, 0.45) !important;
+    color: #c2dff5 !important;
 }
 [data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button:focus:not(:active) {
     box-shadow: none !important;
-    background: transparent !important;
+    background: rgba(29, 78, 216, 0.06) !important;
 }
-
-/* ── Copyright bar ── */
-.ft-copy {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #030c17;
-    border-top: 1px solid #0d1f38;
-    padding: 9px 44px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    font-family: 'SF Mono', 'Consolas', monospace;
-    font-size: 9.5px;
-    color: #253d52 !important;
-    letter-spacing: 0.04em;
-    z-index: 10;
+[data-testid="stVerticalBlock"]:has(.ft-nav-section) .stButton > button:active {
+    background: rgba(29, 78, 216, 0.2) !important;
+    color: #d8eeff !important;
 }
-.ft-copy-sep { color: #0d1f38 !important; margin: 0 2px; }
 </style>""", unsafe_allow_html=True)
 
 
@@ -299,8 +303,12 @@ elif st.session_state.current_view == "caseqa":
 
 
 # ============== FOOTER ==============
-# Single st.columns() element — no inter-element Streamlit gaps possible.
-# Copyright strip is position:absolute at the bottom of the horizontal block.
+# Row 1: st.columns() — brand | navigation buttons | data & legal
+# Row 2: st.markdown() — copyright strip
+# Gap fix: columns padding-bottom = 2rem; copyright margin-top = -2rem.
+# The 2rem overlap eats into the columns’ bottom padding (not text content),
+# so the copyright always sits flush regardless of Streamlit’s flex gap value.
+
 ft_col1, ft_col2, ft_col3 = st.columns([2, 1, 1.5])
 
 with ft_col1:
@@ -310,19 +318,9 @@ with ft_col1:
   Institutional-grade analytics for portfolio optimization,
   equity research, and document intelligence.
 </span>
-<div class="ft-copy">
-  <span>© 2025 AI Financial Advisor</span>
-  <span class="ft-copy-sep">·</span>
-  <span>Educational use only</span>
-  <span class="ft-copy-sep">·</span>
-  <span>Not financial advice</span>
-  <span class="ft-copy-sep">·</span>
-  <span>All rights reserved</span>
-</div>
 """, unsafe_allow_html=True)
 
 with ft_col2:
-    # .ft-nav-section scopes nav button styles to this column only
     st.markdown('<span class="ft-section-label">Navigation</span><div class="ft-nav-section"></div>', unsafe_allow_html=True)
     if st.button("Home", key="ft_home"):
         st.session_state.current_view = "home"
@@ -344,5 +342,18 @@ with ft_col3:
 <div class="ft-data-item">• AI analysis via OpenAI GPT-4o</div>
 <div class="ft-data-item">• US-listed equities only</div>
 <span class="ft-legal-note">Past performance is not indicative of future results.
-Not affiliated with any registered financial institution.</span>
+Not affiliated with any financial institution.</span>
+""", unsafe_allow_html=True)
+
+# Copyright strip — flush below the columns via negative margin
+st.markdown("""
+<div class="ft-copy">
+  <span>© 2025 AI Financial Advisor</span>
+  <span class="ft-copy-sep">·</span>
+  <span>Educational use only</span>
+  <span class="ft-copy-sep">·</span>
+  <span>Not financial advice</span>
+  <span class="ft-copy-sep">·</span>
+  <span>All rights reserved</span>
+</div>
 """, unsafe_allow_html=True)
