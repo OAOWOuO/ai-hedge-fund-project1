@@ -1568,29 +1568,6 @@ def show_stock_analyzer():
                 st.session_state[_chat_key] = []
                 st.rerun()
 
-        # ── COMPANY PROFILE — last ───────────────────────────────────────────────
-        st.divider()
-        if not has_data:
-            st.info("Enter a ticker and click **Run Full Analysis**.")
-        else:
-            st.write(f"### {data['name']}")
-            st.caption(f"{data['sector']} \u00b7 {data['industry']}")
-            change_pct = ((data['price'] - data.get('prev_close', data['price'])) / data.get('prev_close', data['price']) * 100) if data.get('prev_close') else 0
-            st.metric("Price", f"${data['price']:.2f}", f"{change_pct:+.2f}%")
-            st.write(f"**Market Cap:** ${data['market_cap']/1e9:.1f}B")
-            st.write(f"**52W Range:** ${data['low_52w']:.0f} \u2013 ${data['high_52w']:.0f}")
-            if data['high_52w'] > data['low_52w']:
-                pos = (data['price'] - data['low_52w']) / (data['high_52w'] - data['low_52w'])
-                st.progress(min(1.0, max(0.0, pos)), text=f"{pos*100:.0f}% of range")
-            st.divider()
-            st.markdown(f"""
-<div style="background:{recommendation['action_color']}22;border:2px solid {recommendation['action_color']};border-radius:8px;padding:12px;text-align:center;">
-  <div style="font-size:22px;font-weight:700;color:{recommendation['action_color']};">{recommendation['action']}</div>
-  <div style="font-size:13px;color:#c9d1d9;">Target: ${recommendation['target_price']:.2f} ({recommendation['upside']:+.1f}%)</div>
-  <div style="font-size:11px;color:#8b949e;">Score: {recommendation['combined_score']:.0f}</div>
-</div>
-""", unsafe_allow_html=True)
-
         # ── FORM SUBMISSION PROCESSING ───────────────────────────────────────────
         if _submitted and _prompt:
             st.session_state[_chat_key].append({"role": "user", "content": _prompt})
@@ -1651,9 +1628,32 @@ def show_stock_analyzer():
 
 
     with col_right:
-        tab_tech, tab_fund, tab_conclusion = st.tabs(
-            ["📊 Technical Analysis", "📋 Fundamental Analysis", "🎯 Conclusion & Forecast"]
+        tab_profile, tab_tech, tab_fund, tab_conclusion = st.tabs(
+            ["🏢 Profile", "📊 Technical Analysis", "📋 Fundamental Analysis", "🎯 Conclusion & Forecast"]
         )
+
+        # ── PROFILE TAB ────────────────────────────────────────────────────────
+        with tab_profile:
+            if not has_data:
+                st.info("Enter a ticker and click **Run Full Analysis** to see the profile.")
+            else:
+                st.write(f"### {data['name']}")
+                st.caption(f"{data['sector']} · {data['industry']}")
+                change_pct = ((data['price'] - data.get('prev_close', data['price'])) / data.get('prev_close', data['price']) * 100) if data.get('prev_close') else 0
+                st.metric("Price", f"${data['price']:.2f}", f"{change_pct:+.2f}%")
+                st.write(f"**Market Cap:** ${data['market_cap']/1e9:.1f}B")
+                st.write(f"**52W Range:** ${data['low_52w']:.0f} – ${data['high_52w']:.0f}")
+                if data['high_52w'] > data['low_52w']:
+                    pos = (data['price'] - data['low_52w']) / (data['high_52w'] - data['low_52w'])
+                    st.progress(min(1.0, max(0.0, pos)), text=f"{pos*100:.0f}% of range")
+                st.divider()
+                st.markdown(f"""
+<div style="background:{recommendation['action_color']}22;border:2px solid {recommendation['action_color']};border-radius:8px;padding:12px;text-align:center;">
+  <div style="font-size:22px;font-weight:700;color:{recommendation['action_color']};">{recommendation['action']}</div>
+  <div style="font-size:13px;color:#c9d1d9;">Target: ${recommendation['target_price']:.2f} ({recommendation['upside']:+.1f}%)</div>
+  <div style="font-size:11px;color:#8b949e;">Score: {recommendation['combined_score']:.0f}</div>
+</div>
+""", unsafe_allow_html=True)
 
         # ── TECHNICAL TAB ──────────────────────────────────────────────────────
         with tab_tech:
