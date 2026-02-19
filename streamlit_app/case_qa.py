@@ -17,7 +17,6 @@ COLLECTION_NAME = "case_materials"
 EMBED_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-4o-mini"
 TOP_K = 5
-DISTANCE_THRESHOLD = 1.3   # cosine distance 0-2; 1.3 is permissive enough for relevant content
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
@@ -40,9 +39,8 @@ def _get_chroma_client():
     """Return an ephemeral ChromaDB client stored in session state.
 
     Using EphemeralClient (in-memory) avoids all disk-path and SQLite-version
-    issues on Streamlit Cloud.  The client survives Streamlit reruns because
-    it lives in st.session_state, which persists for the lifetime of the
-    browser session.
+    issues on Streamlit Cloud. The client survives Streamlit reruns because
+    it lives in st.session_state for the lifetime of the browser session.
     """
     if "cqa_chroma_client" not in st.session_state:
         import chromadb
@@ -165,7 +163,14 @@ def _embed(text: str, openai_client) -> list[float]:
 
 
 def _retrieve(question: str, collection, openai_client) -> tuple[list[str], list[str]]:
-    """Return (relevant_doc_texts, citation_strings)."""
+    """Return (top-k doc texts, citation strings).
+
+    No distance threshold is applied — all top-k chunks are returned and the
+    LLM decides whether the context is sufficient.  A strict distance cutoff
+    breaks on vague / meta queries (e.g. "tell me about this file") whose
+    embeddings sit far from any specific passage even when the document is
+    clearly relevant.
+    """
     query_vec = _embed(question, openai_client)
     n = min(TOP_K, collection.count())
     if n == 0:
@@ -178,18 +183,15 @@ def _retrieve(question: str, collection, openai_client) -> tuple[list[str], list
     )
     docs = results["documents"][0]
     metas = results["metadatas"][0]
-    dists = results["distances"][0]
 
-    relevant_docs, citations = [], []
-    for doc, meta, dist in zip(docs, metas, dists):
-        if dist <= DISTANCE_THRESHOLD:
-            relevant_docs.append(doc)
-            source = meta.get("source", "unknown")
-            page = meta.get("page", "?")
-            chunk_id = meta.get("chunk_id", "?")
-            citations.append(f"`{source}` — page {page} (chunk `{chunk_id}`)")
+    citations = []
+    for meta in metas:
+        source = meta.get("source", "unknown")
+        page = meta.get("page", "?")
+        chunk_id = meta.get("chunk_id", "?")
+        citations.append(f"`{source}` — page {page} (chunk `{chunk_id}`)")
 
-    return relevant_docs, citations
+    return docs, citations
 
 
 def _answer(question: str, context_docs: list[str], openai_client) -> str:
