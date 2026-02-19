@@ -25,7 +25,6 @@ except Exception:
 if "current_view" not in st.session_state:
     st.session_state.current_view = "home"
 
-# CSS (app styles only — no footer CSS here)
 st.markdown("""
 <style>
     .main { background: #0d1117; }
@@ -166,204 +165,276 @@ elif st.session_state.current_view == "caseqa":
     show_case_qa()
 
 
-# ============== FOOTER ──────────────────────────────────────────────────────
-# Rendered entirely inside components.html so the HTML/CSS/JS are never
-# touched by Streamlit's markdown parser.
+# ============== FOOTER ─────────────────────────────────────────────────────
 components.html("""
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { background: transparent; overflow: hidden; font-size: 14px; }
-
-  .ft {
-    background: #010409;
-    border-top: 2px solid #21262d;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: transparent;
+    overflow: hidden;
+    /* Distinct from app — deep midnight navy, not the same dark gray */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   }
 
-  /* Four-column grid */
-  .ft-inner {
+  /* ── Accent bar at very top ── */
+  .ft-accent {
+    height: 3px;
+    background: linear-gradient(90deg, #0f2a4a 0%, #1d4ed8 40%, #3b82f6 60%, #0f2a4a 100%);
+  }
+
+  /* ── Main footer body ── */
+  .ft-body {
+    background: #05091a;
+    border-top: 1px solid #0d1f38;
+  }
+
+  /* ── Four-column grid with vertical dividers ── */
+  .ft-grid {
     display: grid;
-    grid-template-columns: 2fr 1.1fr 1.3fr 1.5fr;
-    gap: 48px;
-    padding: 36px 48px 28px;
+    grid-template-columns: 1.9fr 1fr 1.25fr 1.45fr;
+    padding: 44px 56px 38px;
   }
 
-  /* Column header */
-  .ft-hdr {
+  .ft-col {
+    padding: 0 40px;
+  }
+  .ft-col:first-child { padding-left: 0; }
+  .ft-col:last-child  { padding-right: 0; }
+  .ft-col:not(:last-child) {
+    border-right: 1px solid #0d1f38;
+  }
+
+  /* ── Column section label ── */
+  .ft-label {
     display: block;
     font-family: 'SF Mono', 'Consolas', 'Liberation Mono', monospace;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
-    color: #58a6ff;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
-    margin-bottom: 14px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #21262d;
+    color: #2563eb;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #0d1f38;
   }
 
-  /* Brand column */
-  .ft-logo {
+  /* ── Brand column ── */
+  .ft-brand-name {
     display: block;
-    font-family: 'SF Mono', 'Consolas', monospace;
-    font-size: 14px;
-    font-weight: 700;
-    color: #e6edf3;
-    letter-spacing: 0.08em;
-    margin-bottom: 12px;
-  }
-  .ft-tagline {
-    display: block;
-    color: #8b949e;
-    font-size: 12px;
-    line-height: 1.65;
-    margin-bottom: 8px;
-  }
-  .ft-sub {
-    display: block;
-    color: #484f58;
-    font-size: 11px;
-    line-height: 1.65;
-  }
-
-  /* Nav buttons */
-  .ft-nav-btn {
-    display: block;
-    padding: 7px 10px;
-    margin-bottom: 4px;
-    color: #8b949e;
-    text-decoration: none;
+    font-family: 'SF Mono', 'Consolas', 'Liberation Mono', monospace;
     font-size: 13px;
-    border-radius: 5px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: #c8d8ea;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #0d1f38;
   }
-  .ft-nav-btn:hover {
-    color: #e6edf3;
-    background: #161b22;
-    border-color: #30363d;
+  .ft-brand-desc {
+    display: block;
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: #4a6880;
+    margin-bottom: 10px;
+  }
+  .ft-brand-sub {
+    display: block;
+    font-size: 11px;
+    line-height: 1.75;
+    color: #293d52;
+  }
+
+  /* ── Navigation buttons ── */
+  .ft-nav {
+    display: block;
+    font-size: 12.5px;
+    line-height: 1;
+    color: #4a6880;
+    text-decoration: none;
+    padding: 8px 0 8px 12px;
+    margin-bottom: 2px;
+    border-left: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    cursor: pointer;
+    letter-spacing: 0.01em;
+  }
+  .ft-nav:hover {
+    color: #c8d8ea;
+    border-left-color: #2563eb;
     text-decoration: none;
   }
 
-  /* Keyboard shortcut rows */
+  /* ── Keyboard shortcut rows ── */
   .sc-row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-bottom: 10px;
+    gap: 5px;
+    margin-bottom: 11px;
+    padding-left: 2px;
   }
   .kbd {
-    display: inline-block;
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-bottom: 2px solid #21262d;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 20px;
+    padding: 0 6px;
+    background: #0a1628;
+    border: 1px solid #1a3050;
+    border-bottom: 2px solid #0d1f38;
     border-radius: 3px;
-    padding: 1px 6px;
-    font-size: 10px;
-    color: #58a6ff;
     font-family: 'SF Mono', 'Consolas', monospace;
-    line-height: 1.6;
-    letter-spacing: 0.04em;
+    font-size: 9px;
+    font-weight: 600;
+    color: #3b82f6;
+    letter-spacing: 0.06em;
   }
-  .sc-label {
-    margin-left: 6px;
-    font-size: 12px;
-    color: #6e7681;
+  .sc-desc {
+    font-size: 11.5px;
+    color: #3d5a72;
+    margin-left: 4px;
+    letter-spacing: 0.01em;
   }
 
-  /* Data & Legal column */
-  .ft-data {
-    display: block;
-    font-size: 12px;
-    color: #6e7681;
-    margin-bottom: 8px;
+  /* ── Data & Legal column ── */
+  .ft-data-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 11.5px;
+    color: #3d5a72;
+    margin-bottom: 10px;
     line-height: 1.5;
+    letter-spacing: 0.01em;
   }
-  .ft-disc {
-    display: block;
-    color: #484f58;
+  .ft-data-icon {
+    flex-shrink: 0;
     font-size: 11px;
+    margin-top: 1px;
+    opacity: 0.7;
+  }
+  .ft-disclaimer {
+    display: block;
+    font-size: 10.5px;
+    color: #1e3048;
+    line-height: 1.75;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #0a1628;
     font-style: italic;
-    line-height: 1.7;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #161b22;
+    letter-spacing: 0.01em;
   }
 
-  /* Copyright strip */
-  .ft-bottom {
-    background: #000000;
-    border-top: 1px solid #161b22;
-    padding: 10px 48px;
+  /* ── Copyright strip ── */
+  .ft-copy {
+    background: #030712;
+    border-top: 1px solid #0a1628;
+    padding: 12px 56px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
     flex-wrap: wrap;
-    font-size: 11px;
-    color: #484f58;
     font-family: 'SF Mono', 'Consolas', monospace;
-    letter-spacing: 0.02em;
+    font-size: 10px;
+    color: #1e3048;
+    letter-spacing: 0.05em;
   }
-  .sep { color: #21262d; }
+  .ft-copy-sep {
+    color: #0d1f38;
+    font-size: 12px;
+  }
 </style>
 </head>
 <body>
 
-<div class="ft">
-  <div class="ft-inner">
+<div class="ft-accent"></div>
 
-    <!-- Brand -->
-    <div>
-      <span class="ft-logo">&#127974;&nbsp; AI FINANCIAL ADVISOR</span>
-      <span class="ft-tagline">Intelligent investment analytics powered by artificial intelligence.</span>
-      <span class="ft-sub">Professional-grade tools for portfolio optimization, equity analysis,
-      and document intelligence &mdash; built for students and practitioners.</span>
+<div class="ft-body">
+  <div class="ft-grid">
+
+    <!-- Column 1: Brand -->
+    <div class="ft-col">
+      <span class="ft-brand-name">&#127974;&ensp;AI FINANCIAL ADVISOR</span>
+      <span class="ft-brand-desc">
+        Institutional-grade investment analytics for portfolio
+        optimization, equity research, and document intelligence.
+      </span>
+      <span class="ft-brand-sub">
+        Built for students and practitioners seeking professional-quality
+        financial analysis tools powered by modern AI.
+      </span>
     </div>
 
-    <!-- Navigation -->
-    <div>
-      <span class="ft-hdr">Navigation</span>
-      <a class="ft-nav-btn" data-nav="home">&#127968;&nbsp;&nbsp;Home</a>
-      <a class="ft-nav-btn" data-nav="portfolio">&#128202;&nbsp;&nbsp;Portfolio Allocator</a>
-      <a class="ft-nav-btn" data-nav="analyzer">&#128200;&nbsp;&nbsp;Stock Analyzer</a>
-      <a class="ft-nav-btn" data-nav="caseqa">&#128218;&nbsp;&nbsp;Case Q&amp;A</a>
+    <!-- Column 2: Navigation -->
+    <div class="ft-col">
+      <span class="ft-label">Navigation</span>
+      <a class="ft-nav" data-nav="home">Home</a>
+      <a class="ft-nav" data-nav="portfolio">Portfolio Allocator</a>
+      <a class="ft-nav" data-nav="analyzer">Stock Analyzer</a>
+      <a class="ft-nav" data-nav="caseqa">Case Q&amp;A</a>
     </div>
 
-    <!-- Keyboard Shortcuts -->
-    <div>
-      <span class="ft-hdr">Keyboard Shortcuts</span>
-      <div class="sc-row"><span class="kbd">Alt</span><span class="kbd">H</span><span class="sc-label">Home</span></div>
-      <div class="sc-row"><span class="kbd">Alt</span><span class="kbd">P</span><span class="sc-label">Portfolio Allocator</span></div>
-      <div class="sc-row"><span class="kbd">Alt</span><span class="kbd">S</span><span class="sc-label">Stock Analyzer</span></div>
-      <div class="sc-row"><span class="kbd">Alt</span><span class="kbd">C</span><span class="sc-label">Case Q&amp;A</span></div>
+    <!-- Column 3: Keyboard Shortcuts -->
+    <div class="ft-col">
+      <span class="ft-label">Keyboard Shortcuts</span>
+      <div class="sc-row">
+        <span class="kbd">Alt</span><span class="kbd">H</span>
+        <span class="sc-desc">Home</span>
+      </div>
+      <div class="sc-row">
+        <span class="kbd">Alt</span><span class="kbd">P</span>
+        <span class="sc-desc">Portfolio Allocator</span>
+      </div>
+      <div class="sc-row">
+        <span class="kbd">Alt</span><span class="kbd">S</span>
+        <span class="sc-desc">Stock Analyzer</span>
+      </div>
+      <div class="sc-row">
+        <span class="kbd">Alt</span><span class="kbd">C</span>
+        <span class="sc-desc">Case Q&amp;A</span>
+      </div>
     </div>
 
-    <!-- Data & Legal -->
-    <div>
-      <span class="ft-hdr">Data &amp; Legal</span>
-      <span class="ft-data">&#128225;&nbsp; Market data via Yahoo Finance</span>
-      <span class="ft-data">&#8987;&nbsp; Prices delayed 15&ndash;20 minutes</span>
-      <span class="ft-data">&#129302;&nbsp; AI analysis via OpenAI GPT-4o</span>
-      <span class="ft-data">&#127760;&nbsp; Coverage: US-listed equities</span>
-      <span class="ft-disc">This platform is for educational purposes only and does not
-      constitute financial, investment, or legal advice. Past performance is not
-      indicative of future results.</span>
+    <!-- Column 4: Data & Legal -->
+    <div class="ft-col">
+      <span class="ft-label">Data &amp; Legal</span>
+      <div class="ft-data-row">
+        <span class="ft-data-icon">&#8227;</span>
+        <span>Market data sourced from Yahoo Finance</span>
+      </div>
+      <div class="ft-data-row">
+        <span class="ft-data-icon">&#8227;</span>
+        <span>Equity prices delayed 15&ndash;20 minutes</span>
+      </div>
+      <div class="ft-data-row">
+        <span class="ft-data-icon">&#8227;</span>
+        <span>AI signals generated via OpenAI GPT-4o</span>
+      </div>
+      <div class="ft-data-row">
+        <span class="ft-data-icon">&#8227;</span>
+        <span>Coverage restricted to US-listed equities</span>
+      </div>
+      <span class="ft-disclaimer">
+        This platform is provided for educational purposes only and does
+        not constitute financial, investment, or legal advice. Past
+        performance is not indicative of future results.
+      </span>
     </div>
 
   </div>
 
   <!-- Copyright strip -->
-  <div class="ft-bottom">
+  <div class="ft-copy">
     <span>&copy; 2025 AI Financial Advisor</span>
-    <span class="sep">&middot;</span>
-    <span>Not affiliated with any financial institution</span>
-    <span class="sep">&middot;</span>
+    <span class="ft-copy-sep">|</span>
+    <span>Not affiliated with any registered financial institution</span>
+    <span class="ft-copy-sep">|</span>
     <span>For educational use only</span>
-    <span class="sep">&middot;</span>
+    <span class="ft-copy-sep">|</span>
     <span>All rights reserved</span>
   </div>
 </div>
@@ -378,15 +449,13 @@ components.html("""
     } catch (e) {}
   }
 
-  // Footer nav buttons (inside this iframe — no parent DOM query needed)
-  document.querySelectorAll('.ft-nav-btn[data-nav]').forEach(function (el) {
+  document.querySelectorAll('.ft-nav[data-nav]').forEach(function (el) {
     el.addEventListener('click', function (e) {
       e.preventDefault();
       goTo(el.getAttribute('data-nav'));
     });
   });
 
-  // Keyboard shortcuts (listen on parent window)
   try {
     window.parent.document.addEventListener('keydown', function (e) {
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -404,4 +473,4 @@ components.html("""
 
 </body>
 </html>
-""", height=290, scrolling=False)
+""", height=310, scrolling=False)
