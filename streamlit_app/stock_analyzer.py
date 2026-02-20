@@ -1621,7 +1621,7 @@ def show_stock_analyzer():
             st.rerun()
     with col_title:
         st.write("# 📈 Stock Analyzer")
-        st.caption("CFA-Style Technical & Fundamental Analysis with Price Forecasting")
+        st.caption("Technical & Fundamental Analysis with Price Forecasting")
 
     if 'inst_data' not in st.session_state:
         st.session_state.inst_data = None

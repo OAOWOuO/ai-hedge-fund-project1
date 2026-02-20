@@ -17,6 +17,15 @@ st.set_page_config(
 if "current_view" not in st.session_state:
     st.session_state.current_view = "home"
 
+# Handle navigation from HTML <a href="?nav=…"> CTA links (full-page reload → query param)
+try:
+    _nav = st.query_params.get("nav", "")
+    if _nav in ("home", "portfolio", "analyzer", "caseqa"):
+        st.session_state.current_view = _nav
+        st.query_params.clear()
+except Exception:
+    pass
+
 st.markdown("""<style>
 .main { background: #0d1117; }
 .stApp { background: #0d1117; }
@@ -26,136 +35,90 @@ h1, h2, h3, h4 { color: #e6edf3 !important; font-weight: 600 !important; }
 p, span, label, li, div { color: #c9d1d9 !important; }
 
 /* ══════════════════════════════════════════════════
-   BUTTON DESIGN SYSTEM — v4
-   Dual-selector strategy for maximum compatibility:
-   1. [data-testid="column"]:has(.unique-class) — targets
-      entire column by its unique content (most reliable)
-   2. element-container adjacent-sibling as fallback
-   3. button[kind="primary"] for Streamlit primary type
-   Footer buttons overridden last (text-link style).
+   BUTTON DESIGN SYSTEM — v5
+   Home CTAs → HTML <a> links (version-immune, no CSS battles).
+   Back / RFA / Clear Chat → 4-layer data-testid fallback:
+     [data-testid="baseButton-*"]    Streamlit ≥ 1.36
+     [data-testid="stBaseButton-*"]  Streamlit 1.32–1.35
+     button[kind="*"]                attribute prop fallback
+     .stButton > button              class-based last resort
+   Footer buttons overridden separately (.ft-nav-section).
    ══════════════════════════════════════════════════ */
 
-/* ── Base: every non-footer button gets a visible ghost style ── */
-.stButton > button,
-button[kind="secondary"],
-button[kind="primary"] {
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.025em !important;
+/* ── CTA LINKS (HTML <a> tags — home page navigation) ──
+   These bypass Streamlit's button system entirely.
+   Inline styles + classes ensure guaranteed visibility. ── */
+a.cta-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-top: 20px;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    text-align: center;
+    text-decoration: none !important;
+    letter-spacing: 0.025em;
+    min-height: 52px;
+    box-sizing: border-box;
+    cursor: pointer;
     transition: background 0.18s ease, border-color 0.18s ease,
                 color 0.18s ease, box-shadow 0.18s ease,
-                transform 0.15s ease !important;
-    cursor: pointer !important;
-    background: #0f1923 !important;
-    border: 1.5px solid #374151 !important;
-    color: #c9d1d9 !important;
-    padding: 10px 20px !important;
-    font-size: 14px !important;
-    min-height: 42px !important;
+                transform 0.15s ease;
 }
-.stButton > button:hover,
-button[kind="secondary"]:hover {
-    background: #161b22 !important;
-    border-color: #58a6ff !important;
-    color: #e6edf3 !important;
-    box-shadow: 0 0 0 1px rgba(88,166,255,0.4) !important;
-}
-.stButton > button:active {
-    transform: scale(0.975) !important;
-    filter: brightness(0.88) !important;
-    transition-duration: 0.08s !important;
-}
-.stButton > button:focus-visible {
-    outline: 2px solid #60a5fa !important;
-    outline-offset: 2px !important;
-    box-shadow: 0 0 0 4px rgba(96,165,250,0.2) !important;
-}
-.stButton > button:disabled,
-.stButton > button[disabled] {
-    opacity: 0.4 !important;
-    cursor: not-allowed !important;
-    pointer-events: none !important;
-}
-
-/* ── 1. HOME CTA — Portfolio Allocator (Emerald) ──
-   Primary: column :has(.tool-card-green) — col1 owns this class exclusively.
-   Fallback: adjacent-sibling via btn-cta-portfolio marker. ── */
-[data-testid="column"]:has(.tool-card-green) .stButton > button,
-[data-testid="element-container"]:has(.btn-cta-portfolio)
-+ [data-testid="element-container"] .stButton > button {
-    background: linear-gradient(135deg, #064e3b 0%, #065f46 60%, #047857 100%) !important;
-    border: 1.5px solid #34d399 !important;
+a.cta-emerald {
+    background: linear-gradient(135deg, #064e3b 0%, #065f46 60%, #047857 100%);
+    border: 1.5px solid #34d399;
     color: #d1fae5 !important;
-    padding: 14px 20px !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important;
-    box-shadow: 0 2px 12px rgba(16,185,129,0.25), inset 0 1px 0 rgba(255,255,255,0.07) !important;
-    min-height: 52px !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 12px rgba(16,185,129,0.25), inset 0 1px 0 rgba(255,255,255,0.07);
 }
-[data-testid="column"]:has(.tool-card-green) .stButton > button:hover,
-[data-testid="element-container"]:has(.btn-cta-portfolio)
-+ [data-testid="element-container"] .stButton > button:hover {
-    background: linear-gradient(135deg, #065f46 0%, #047857 60%, #059669 100%) !important;
-    border-color: #6ee7b7 !important;
+a.cta-emerald:hover {
+    background: linear-gradient(135deg, #065f46 0%, #047857 60%, #059669 100%);
+    border-color: #6ee7b7;
     color: #fff !important;
-    box-shadow: 0 6px 24px rgba(16,185,129,0.45), inset 0 1px 0 rgba(255,255,255,0.1) !important;
-    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 24px rgba(16,185,129,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+    text-decoration: none !important;
 }
-
-/* ── 2. HOME CTA — Stock Analyzer (Indigo) ── */
-[data-testid="column"]:has(.tool-card-indigo) .stButton > button,
-[data-testid="element-container"]:has(.btn-cta-analyzer)
-+ [data-testid="element-container"] .stButton > button {
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 55%, #3730a3 100%) !important;
-    border: 1.5px solid #818cf8 !important;
+a.cta-indigo {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 55%, #3730a3 100%);
+    border: 1.5px solid #818cf8;
     color: #e0e7ff !important;
-    padding: 14px 20px !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important;
-    box-shadow: 0 2px 12px rgba(99,102,241,0.25), inset 0 1px 0 rgba(255,255,255,0.07) !important;
-    min-height: 52px !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 12px rgba(99,102,241,0.25), inset 0 1px 0 rgba(255,255,255,0.07);
 }
-[data-testid="column"]:has(.tool-card-indigo) .stButton > button:hover,
-[data-testid="element-container"]:has(.btn-cta-analyzer)
-+ [data-testid="element-container"] .stButton > button:hover {
-    background: linear-gradient(135deg, #312e81 0%, #3730a3 55%, #4338ca 100%) !important;
-    border-color: #a5b4fc !important;
+a.cta-indigo:hover {
+    background: linear-gradient(135deg, #312e81 0%, #3730a3 55%, #4338ca 100%);
+    border-color: #a5b4fc;
     color: #fff !important;
-    box-shadow: 0 6px 24px rgba(99,102,241,0.5), inset 0 1px 0 rgba(255,255,255,0.1) !important;
-    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 24px rgba(99,102,241,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+    text-decoration: none !important;
 }
-
-/* ── 3. HOME CTA — Case Q&A (Violet) ── */
-[data-testid="column"]:has(.tool-card-purple) .stButton > button,
-[data-testid="element-container"]:has(.btn-cta-caseqa)
-+ [data-testid="element-container"] .stButton > button {
-    background: linear-gradient(135deg, #2e1065 0%, #4a1d96 55%, #6d28d9 100%) !important;
-    border: 1.5px solid #c084fc !important;
+a.cta-violet {
+    background: linear-gradient(135deg, #2e1065 0%, #4a1d96 55%, #6d28d9 100%);
+    border: 1.5px solid #c084fc;
     color: #ede9fe !important;
-    padding: 14px 20px !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important;
-    box-shadow: 0 2px 12px rgba(109,40,217,0.25), inset 0 1px 0 rgba(255,255,255,0.07) !important;
-    min-height: 52px !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 12px rgba(109,40,217,0.25), inset 0 1px 0 rgba(255,255,255,0.07);
 }
-[data-testid="column"]:has(.tool-card-purple) .stButton > button:hover,
-[data-testid="element-container"]:has(.btn-cta-caseqa)
-+ [data-testid="element-container"] .stButton > button:hover {
-    background: linear-gradient(135deg, #4a1d96 0%, #6d28d9 55%, #7c3aed 100%) !important;
-    border-color: #d8b4fe !important;
+a.cta-violet:hover {
+    background: linear-gradient(135deg, #4a1d96 0%, #6d28d9 55%, #7c3aed 100%);
+    border-color: #d8b4fe;
     color: #fff !important;
-    box-shadow: 0 6px 24px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.1) !important;
-    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 24px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+    text-decoration: none !important;
 }
 
-/* ── 4. BACK buttons (Ghost / outline) ──
-   col_back is always its own narrow column → safe to use column :has. ── */
-[data-testid="column"]:has(.btn-back) .stButton > button,
-[data-testid="element-container"]:has(.btn-back)
-+ [data-testid="element-container"] .stButton > button {
+/* ── BACK buttons (Ghost / outline) ──
+   4-layer fallback: col :has(.btn-back) targets the narrow back column. ── */
+[data-testid="column"]:has(.btn-back) [data-testid="baseButton-secondary"],
+[data-testid="column"]:has(.btn-back) [data-testid="stBaseButton-secondary"],
+[data-testid="column"]:has(.btn-back) button[kind="secondary"],
+[data-testid="column"]:has(.btn-back) .stButton > button {
     background: transparent !important;
     border: 1px solid #30363d !important;
     color: #8b949e !important;
@@ -168,9 +131,10 @@ button[kind="secondary"]:hover {
     letter-spacing: 0 !important;
     text-transform: none !important;
 }
-[data-testid="column"]:has(.btn-back) .stButton > button:hover,
-[data-testid="element-container"]:has(.btn-back)
-+ [data-testid="element-container"] .stButton > button:hover {
+[data-testid="column"]:has(.btn-back) [data-testid="baseButton-secondary"]:hover,
+[data-testid="column"]:has(.btn-back) [data-testid="stBaseButton-secondary"]:hover,
+[data-testid="column"]:has(.btn-back) button[kind="secondary"]:hover,
+[data-testid="column"]:has(.btn-back) .stButton > button:hover {
     border-color: #58a6ff !important;
     color: #e6edf3 !important;
     background: #161b22 !important;
@@ -178,11 +142,11 @@ button[kind="secondary"]:hover {
     box-shadow: none !important;
 }
 
-/* ── 5. RUN FULL ANALYSIS (primary — most prominent CTA) ──
-   button[kind="primary"] catches Streamlit type="primary".
-   Adjacent-sibling via btn-rfa marker as secondary path. ── */
-button[kind="primary"],
+/* ── RUN FULL ANALYSIS (primary — most prominent CTA) ──
+   4-layer fallback for Streamlit type="primary" button. ── */
+[data-testid="baseButton-primary"],
 [data-testid="stBaseButton-primary"],
+button[kind="primary"],
 [data-testid="element-container"]:has(.btn-rfa)
 + [data-testid="element-container"] .stButton > button {
     background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%) !important;
@@ -195,9 +159,11 @@ button[kind="primary"],
     text-transform: uppercase !important;
     box-shadow: 0 2px 12px rgba(22,163,74,0.35), inset 0 1px 0 rgba(255,255,255,0.06) !important;
     min-height: 48px !important;
+    border-radius: 8px !important;
 }
-button[kind="primary"]:hover,
+[data-testid="baseButton-primary"]:hover,
 [data-testid="stBaseButton-primary"]:hover,
+button[kind="primary"]:hover,
 [data-testid="element-container"]:has(.btn-rfa)
 + [data-testid="element-container"] .stButton > button:hover {
     background: linear-gradient(135deg, #166534 0%, #15803d 50%, #16a34a 100%) !important;
@@ -207,7 +173,7 @@ button[kind="primary"]:hover,
     transform: translateY(-1px) !important;
 }
 
-/* ── 6. SEND → (form submit — compact accent) ── */
+/* ── SEND → (form submit — compact accent) ── */
 [data-testid="stFormSubmitButton"] > button {
     background: #0f2a4a !important;
     border: 1px solid #1d4ed8 !important;
@@ -227,9 +193,15 @@ button[kind="primary"]:hover,
     transform: none !important;
 }
 
-/* ── 7. CLEAR CHAT (Ghost danger) ──
-   Adjacent-sibling only: shares col_left with RFA so we must NOT
-   use column :has() here (would accidentally re-style RFA too). ── */
+/* ── CLEAR CHAT (Ghost danger) ──
+   Adjacent-sibling only: shares col_left with RFA.
+   4-layer fallback ensures at least one selector matches. ── */
+[data-testid="element-container"]:has(.btn-clear)
++ [data-testid="element-container"] [data-testid="baseButton-secondary"],
+[data-testid="element-container"]:has(.btn-clear)
++ [data-testid="element-container"] [data-testid="stBaseButton-secondary"],
+[data-testid="element-container"]:has(.btn-clear)
++ [data-testid="element-container"] button[kind="secondary"],
 [data-testid="element-container"]:has(.btn-clear)
 + [data-testid="element-container"] .stButton > button {
     background: transparent !important;
@@ -243,6 +215,12 @@ button[kind="primary"]:hover,
     text-transform: none !important;
     letter-spacing: 0 !important;
 }
+[data-testid="element-container"]:has(.btn-clear)
++ [data-testid="element-container"] [data-testid="baseButton-secondary"]:hover,
+[data-testid="element-container"]:has(.btn-clear)
++ [data-testid="element-container"] [data-testid="stBaseButton-secondary"]:hover,
+[data-testid="element-container"]:has(.btn-clear)
++ [data-testid="element-container"] button[kind="secondary"]:hover,
 [data-testid="element-container"]:has(.btn-clear)
 + [data-testid="element-container"] .stButton > button:hover {
     border-color: #f85149 !important;
@@ -671,11 +649,8 @@ def show_home():
 <li>Dividend income tracking</li>
 <li>One-click rebalancing</li>
 </ul>
+<a href="?nav=portfolio" class="cta-btn cta-emerald">Enter Portfolio Allocator →</a>
 </div>""", unsafe_allow_html=True)
-        st.markdown('<div class="btn-cta-portfolio"></div>', unsafe_allow_html=True)
-        if st.button("Enter Portfolio Allocator →", key="btn_portfolio", use_container_width=True):
-            st.session_state.current_view = "portfolio"
-            st.rerun()
 
     with col2:
         st.markdown("""<div class="tool-card tool-card-indigo">
@@ -684,18 +659,15 @@ def show_home():
 <div style="font-size: 11px; color: #818cf8 !important; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px;">TECHNICAL &amp; FUNDAMENTAL</div>
 <p style="color: #8b949e; margin: 12px 0;">Deep-dive analysis of individual stocks with institutional-grade technical and fundamental scoring to find the best opportunities.</p>
 <ul style="text-align: left; color: #8b949e; padding-left: 20px; font-size: 14px; line-height: 1.9;">
-<li>CFA-style technical analysis (RSI, MACD, Bollinger)</li>
+<li>Technical analysis (RSI, MACD, Bollinger)</li>
 <li>Fundamental scoring (valuation, profitability, growth)</li>
 <li>Multi-model valuation (P/E, DCF, consensus)</li>
 <li>Return forecasts with confidence intervals</li>
 <li>Support &amp; resistance levels</li>
 <li>BUY / HOLD / SELL recommendation</li>
 </ul>
+<a href="?nav=analyzer" class="cta-btn cta-indigo">Enter Stock Analyzer →</a>
 </div>""", unsafe_allow_html=True)
-        st.markdown('<div class="btn-cta-analyzer"></div>', unsafe_allow_html=True)
-        if st.button("Enter Stock Analyzer →", key="btn_analyzer", use_container_width=True):
-            st.session_state.current_view = "analyzer"
-            st.rerun()
 
     with col3:
         st.markdown("""<div class="tool-card tool-card-purple">
@@ -710,11 +682,8 @@ def show_home():
 <li>Cited answers: file + page + chunk ID</li>
 <li>Refuses unsupported questions explicitly</li>
 </ul>
+<a href="?nav=caseqa" class="cta-btn cta-violet">Enter Case Q&amp;A →</a>
 </div>""", unsafe_allow_html=True)
-        st.markdown('<div class="btn-cta-caseqa"></div>', unsafe_allow_html=True)
-        if st.button("Enter Case Q&A →", key="btn_caseqa", use_container_width=True):
-            st.session_state.current_view = "caseqa"
-            st.rerun()
 
 
 # ============== MAIN ROUTING ==============
