@@ -647,10 +647,12 @@ def generate_technical_signals(data: Dict, tech_df: pd.DataFrame) -> Dict:
             })
         else:
             obv_score = 0
+            _obv_slope_pct = ((latest['OBV'] - tech_df['OBV'].iloc[-10]) / (abs(tech_df['OBV'].iloc[-10]) + 1e-10) * 100) if len(tech_df) > 10 else 0
+            _obv_slope_desc = "slight upward slope" if _obv_slope_pct > 2 else "slight downward slope" if _obv_slope_pct < -2 else "flat"
             signals.append({
                 "category": "Volume", "indicator": "OBV",
                 "signal": "NEUTRAL", "score": "0",
-                "detail": f"OBV stable around average",
+                "detail": f"OBV {_obv_slope_desc} ({obv_trend:+.1f}% vs 20-day avg) — no sustained accumulation or distribution",
                 "threshold": "-10% ≤ OBV deviation ≤ 10%"
             })
     volume_score += obv_score
@@ -1143,23 +1145,28 @@ def analyze_fundamentals(data: Dict) -> Dict:
     # Calculate percentages
     score_pct = (total_score / max_score * 100) if max_score > 0 else 0
 
-    # Determine fundamental rating
-    if score_pct >= 45:
+    # Remap to 0-100 display scale where 50 = neutral
+    # score_pct ranges from ~-40 to +100; map via 50 + x*0.5 then clamp
+    display_score = max(0.0, min(100.0, 50.0 + score_pct * 0.5))
+
+    # Determine fundamental rating based on display_score (0-100 scale)
+    if display_score >= 80:
         fund_rating = ("STRONG BUY", "#00ff00")
-    elif score_pct >= 25:
+    elif display_score >= 60:
         fund_rating = ("BUY", "#3fb950")
-    elif score_pct >= 5:
+    elif display_score >= 40:
         fund_rating = ("HOLD", "#d29922")
-    elif score_pct >= -15:
-        fund_rating = ("SELL", "#f85149")
+    elif display_score >= 20:
+        fund_rating = ("UNDERPERFORM", "#f85149")
     else:
-        fund_rating = ("STRONG SELL", "#ff0000")
+        fund_rating = ("SELL", "#ff0000")
 
     return {
         "signals": signals,
         "total_score": total_score,
         "max_score": max_score,
         "score_pct": score_pct,
+        "display_score": display_score,
         "rating": fund_rating[0],
         "rating_color": fund_rating[1],
         "breakdown": {
@@ -1315,11 +1322,12 @@ def forecast_returns(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valua
     else:
         base_annual_return = 0
 
-    # Adjust based on technical score
-    tech_adjustment = tech_analysis['score_pct'] / 100 * 5  # +/- 5% based on technicals
+    # Adjust based on technical score (score_pct -100 to +100 → ±5%)
+    tech_adjustment = tech_analysis['score_pct'] / 100 * 5
 
-    # Adjust based on fundamental score
-    fund_adjustment = fund_analysis['score_pct'] / 100 * 5  # +/- 5% based on fundamentals
+    # Adjust based on fundamental score (display_score 0-100 → -5% to +5%)
+    _fund_disp = fund_analysis.get('display_score', max(0.0, min(100.0, 50.0 + fund_analysis['score_pct'] * 0.5)))
+    fund_adjustment = (_fund_disp - 50) / 50 * 5
 
     # Combined expected annual return
     expected_annual = base_annual_return + tech_adjustment + fund_adjustment
@@ -1348,17 +1356,20 @@ def forecast_returns(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valua
         range_low = point_estimate - period_vol
         range_high = point_estimate + period_vol
 
-        # Confidence based on signal strength
-        combined_score = (tech_analysis['score_pct'] + fund_analysis['score_pct']) / 2
+        # Confidence based on signal strength (distance from neutral on 0-100 scale)
+        _tech_disp_fc = (tech_analysis['score_pct'] + 100) / 2
+        _fund_disp_fc = fund_analysis.get('display_score', max(0.0, min(100.0, 50.0 + fund_analysis['score_pct'] * 0.5)))
+        _combined_disp_fc = (_tech_disp_fc + _fund_disp_fc) / 2
+        _dist_from_neutral = abs(_combined_disp_fc - 50)
 
-        if abs(combined_score) > 40:
-            confidence = "HIGH"
+        if _dist_from_neutral > 20:
+            confidence = "High"
             probability = "65-75%"
-        elif abs(combined_score) > 20:
-            confidence = "MEDIUM"
+        elif _dist_from_neutral > 10:
+            confidence = "Medium"
             probability = "55-65%"
         else:
-            confidence = "LOW"
+            confidence = "Low"
             probability = "45-55%"
 
         # Price targets
@@ -1386,40 +1397,47 @@ def generate_recommendation(data: Dict, tech_analysis: Dict, fund_analysis: Dict
     """Generate final institutional-grade recommendation."""
     price = data['price']
 
-    # Combined score (60% fundamental, 40% technical)
-    combined_score = fund_analysis['score_pct'] * 0.6 + tech_analysis['score_pct'] * 0.4
+    # Combined score on 0-100 display scale (50 = neutral)
+    # Use display_score for fundamentals and remap tech score_pct similarly
+    fund_display = fund_analysis.get('display_score', max(0.0, min(100.0, 50.0 + fund_analysis['score_pct'] * 0.5)))
+    tech_display = max(0.0, min(100.0, (tech_analysis['score_pct'] + 100) / 2))
+    combined_score = fund_display * 0.6 + tech_display * 0.4
 
-    # Determine action
-    if combined_score >= 35:
+    # Determine action based on 0-100 display scale (80/60/40/20/0)
+    if combined_score >= 80:
         action = "STRONG BUY"
         action_color = "#00ff00"
-    elif combined_score >= 15:
+    elif combined_score >= 60:
         action = "BUY"
         action_color = "#3fb950"
-    elif combined_score >= -5:
+    elif combined_score >= 40:
         action = "HOLD"
         action_color = "#d29922"
-    elif combined_score >= -25:
-        action = "SELL"
+    elif combined_score >= 20:
+        action = "UNDERPERFORM"
         action_color = "#f85149"
     else:
-        action = "STRONG SELL"
+        action = "SELL"
         action_color = "#ff0000"
 
     # Trade decision
     if action in ["STRONG BUY", "BUY"]:
         trade_decision = "INITIATE LONG POSITION"
-    elif action in ["STRONG SELL", "SELL"]:
-        trade_decision = "AVOID / EXIT POSITION"
+    elif action in ["UNDERPERFORM", "SELL"]:
+        trade_decision = "REDUCE / AVOID POSITION"
     else:
-        trade_decision = "NO ACTION - WAIT FOR BETTER ENTRY"
+        trade_decision = "HOLD - WAIT FOR CLEARER SIGNAL"
 
-    # Price target and upside
+    # Price target and upside (enforce Bear ≤ Base ≤ Bull)
     if 'composite' in valuation:
         target_price = valuation['composite']['target_mid']
         upside = valuation['composite']['upside_mid']
         target_low = valuation['composite']['target_low']
         target_high = valuation['composite']['target_high']
+        # Enforce ordering: bear ≤ base ≤ bull
+        sorted_targets = sorted([target_low, target_price, target_high])
+        target_low, target_price, target_high = sorted_targets
+        upside = (target_price - price) / price * 100
     else:
         target_price = price
         upside = 0
@@ -1454,7 +1472,7 @@ Current price of ${price:.2f} {'represents an attractive entry point' if upside 
     # Invalidation criteria
     if action in ["STRONG BUY", "BUY"]:
         invalidation = f"Exit if price falls below ${price * 0.9:.2f} (-10%) or if key technical support breaks."
-    elif action in ["STRONG SELL", "SELL"]:
+    elif action in ["UNDERPERFORM", "SELL"]:
         invalidation = f"Reconsider if price breaks above ${price * 1.1:.2f} (+10%) with strong volume."
     else:
         invalidation = "Monitor for decisive breakout above resistance or breakdown below support."
@@ -1796,6 +1814,75 @@ def show_stock_analyzer():
   <div style="font-size:13px;color:#8b9db5 !important;line-height:1.65;">{_biz_short}</div>
 </div>""", unsafe_allow_html=True)
 
+                # ── KEY STATS CARD ─────────────────────────────────────────────
+                st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+                _pe_ks   = data.get('pe_ratio')
+                _fpe_ks  = data.get('forward_pe')
+                _eps_ks  = data.get('eps')
+                _rev_ks  = data.get('info', {}).get('totalRevenue', 0) or 0
+                _div_ks  = data.get('info', {}).get('dividendYield', None)
+                _beta_ks = data.get('info', {}).get('beta', None)
+                _div_str = f"{_div_ks*100:.2f}%" if _div_ks else "—"
+                _beta_str = f"{_beta_ks:.2f}" if _beta_ks is not None else "N/A"
+                _rev_str = f"${_rev_ks/1e9:.1f}B" if _rev_ks >= 1e9 else f"${_rev_ks/1e6:.0f}M" if _rev_ks else "N/A"
+
+                _ks_items = [
+                    ("P/E (TTM)",      f"{_pe_ks:.1f}x" if _pe_ks else "N/A",   "Trailing 12 months"),
+                    ("Forward P/E",    f"{_fpe_ks:.1f}x" if _fpe_ks else "N/A", "NTM consensus est."),
+                    ("EPS (TTM)",      f"${_eps_ks:.2f}" if _eps_ks else "N/A",  "Trailing 12 months"),
+                    ("Revenue (TTM)",  _rev_str,                                  "Last 12 months"),
+                    ("Dividend Yield", _div_str,                                  "Annual indicated"),
+                    ("Beta (5Y)",      _beta_str,                                 "vs S&P 500"),
+                ]
+                _ks_cells = "".join(
+                    f"<div style='flex:1;min-width:80px;padding:8px 6px;border-right:1px solid #21262d;'>"
+                    f"<div style='font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;'>{lbl}</div>"
+                    f"<div style='font-size:15px;font-weight:700;color:#e6edf3;'>{val}</div>"
+                    f"<div style='font-size:10px;color:#6e7681;margin-top:1px;'>{sub}</div></div>"
+                    for lbl, val, sub in _ks_items
+                )
+                st.markdown(f"""
+<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;overflow:hidden;">
+  <div style="font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:8px 12px;background:#161b22;border-bottom:1px solid #30363d;">Key Statistics</div>
+  <div style="display:flex;flex-wrap:wrap;">{_ks_cells}</div>
+</div>""", unsafe_allow_html=True)
+
+                # ── FINANCIAL QUALITY CARD ─────────────────────────────────────
+                st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+                _gm_fq   = data.get('gross_margin', 0) or 0
+                _opm_fq  = data.get('operating_margin', 0) or 0
+                _npm_fq  = data.get('profit_margin', 0) or 0
+                _fcf_fq  = data.get('free_cash_flow', 0) or 0
+                _cash_fq = data.get('total_cash', 0) or 0
+                _debt_fq = data.get('total_debt', 0) or 0
+                _net_cash = _cash_fq - _debt_fq
+                _net_cash_str = (f"${_net_cash/1e9:.1f}B" if abs(_net_cash) >= 1e9 else f"${_net_cash/1e6:.0f}M") if _net_cash != 0 else "N/A"
+                _net_cash_label = "Net Cash" if _net_cash > 0 else "Net Debt"
+                _fcf_str = (f"${_fcf_fq/1e9:.1f}B" if abs(_fcf_fq) >= 1e9 else f"${_fcf_fq/1e6:.0f}M") if _fcf_fq else "N/A"
+
+                def _margin_color(pct, bench):
+                    return "#3fb950" if pct >= bench else "#d29922" if pct >= bench * 0.5 else "#f85149"
+
+                _fq_items = [
+                    ("Gross Margin",  f"{_gm_fq*100:.1f}%",  "TTM", _margin_color(_gm_fq*100, 40)),
+                    ("Op. Margin",    f"{_opm_fq*100:.1f}%", "TTM", _margin_color(_opm_fq*100, 15)),
+                    ("Net Margin",    f"{_npm_fq*100:.1f}%", "TTM", _margin_color(_npm_fq*100, 10)),
+                    ("FCF (TTM)",     _fcf_str,               "Free cash flow", "#3fb950" if _fcf_fq > 0 else "#f85149"),
+                    (_net_cash_label, _net_cash_str,          "Cash minus debt", "#3fb950" if _net_cash > 0 else "#f85149"),
+                ]
+                _fq_cells = "".join(
+                    f"<div style='flex:1;min-width:80px;padding:8px 6px;border-right:1px solid #21262d;'>"
+                    f"<div style='font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;'>{lbl}</div>"
+                    f"<div style='font-size:15px;font-weight:700;color:{c};'>{val}</div>"
+                    f"<div style='font-size:10px;color:#6e7681;margin-top:1px;'>{sub}</div></div>"
+                    for lbl, val, sub, c in _fq_items
+                )
+                st.markdown(f"""
+<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;overflow:hidden;">
+  <div style="font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:8px 12px;background:#161b22;border-bottom:1px solid #30363d;">Financial Quality</div>
+  <div style="display:flex;flex-wrap:wrap;">{_fq_cells}</div>
+</div>""", unsafe_allow_html=True)
+
 
         # ── TECHNICAL TAB ──────────────────────────────────────────────────────
         with tab_tech:
@@ -2000,17 +2087,25 @@ below 50 confirm bearish momentum. Currently, {data['ticker']}'s RSI(14) is
                 st.markdown("##### Trend Momentum: MACD (12, 26, 9)")
                 macd_diff   = macd_val - macd_sig
                 macd_trend  = "expanding" if abs(chart_data['MACD_Hist'].iloc[-1]) > abs(chart_data['MACD_Hist'].iloc[-5]) else "contracting"
+                if macd_diff > 0 and macd_trend == 'expanding':
+                    _macd_momentum_desc = "building bullish momentum"
+                elif macd_diff > 0 and macd_trend == 'contracting':
+                    _macd_momentum_desc = "fading bullish momentum — upward pressure is easing"
+                elif macd_diff < 0 and macd_trend == 'expanding':
+                    _macd_momentum_desc = "intensifying bearish pressure"
+                else:
+                    _macd_momentum_desc = "easing bearish pressure — downward momentum is waning"
                 st.markdown(f"""
 <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px 16px;margin-bottom:10px;font-size:13px;color:#c9d1d9;line-height:1.7;">
-The <strong>MACD (Moving Average Convergence Divergence)</strong> indicator, created by Gerald Appel, measures 
-the relationship between two exponential moving averages — the 12-period EMA minus the 26-period EMA — to identify 
-trend direction and momentum shifts. The <strong>Signal Line</strong> (9-period EMA of MACD) acts as a trigger: 
-when the MACD line crosses above it, a bullish signal is generated; a cross below is bearish. The 
-<strong>Histogram</strong> (the difference between MACD and Signal) provides a visual representation of momentum 
-— widening green bars indicate strengthening bullish momentum, narrowing or red bars signal distribution.
-Currently, MACD is <strong style="color={'#58a6ff'};">{macd_val:.3f}</strong> vs Signal <strong>{macd_sig:.3f}</strong> 
-(spread: <strong style="color={'#3fb950' if macd_diff >= 0 else '#f85149'};">{macd_diff:+.3f}</strong>), 
-with the histogram <strong>{macd_trend}</strong> — suggesting {'building' if macd_trend == 'expanding' and macd_diff > 0 else 'fading' if macd_trend == 'contracting' else 'intensifying'} momentum.
+The <strong>MACD (Moving Average Convergence Divergence)</strong> indicator, created by Gerald Appel, measures
+the relationship between two exponential moving averages — the 12-period EMA minus the 26-period EMA — to identify
+trend direction and momentum shifts. The <strong>Signal Line</strong> (9-period EMA of MACD) acts as a trigger:
+when the MACD line crosses above it, a bullish signal is generated; a cross below is bearish. The
+<strong>Histogram</strong> (the difference between MACD and Signal) provides a visual representation of momentum
+— widening bars in the direction of the trend indicate strengthening conviction, narrowing bars signal fading pressure.
+Currently, MACD is <strong style="color={'#58a6ff'};">{macd_val:.3f}</strong> vs Signal <strong>{macd_sig:.3f}</strong>
+(spread: <strong style="color={'#3fb950' if macd_diff >= 0 else '#f85149'};">{macd_diff:+.3f}</strong>),
+with the histogram <strong>{macd_trend}</strong> — suggesting <strong>{_macd_momentum_desc}</strong>.
 </div>""", unsafe_allow_html=True)
 
                 macd_data  = chart_data.tail(120).copy()
@@ -2072,10 +2167,16 @@ with the histogram <strong>{macd_trend}</strong> — suggesting {'building' if m
                 st.info("Run an analysis to see fundamental data.")
             else:
                 # ── 1. PROFESSIONAL OVERVIEW ─────────────────────────────────
-                fund_score = fund_analysis['score_pct']
+                fund_score = fund_analysis.get('display_score', max(0.0, min(100.0, 50.0 + fund_analysis['score_pct'] * 0.5)))
                 pe    = data.get('pe_ratio')
                 fpe   = data.get('forward_pe')
+                # PEG: use yfinance value with fallback calculation (single source)
                 peg   = data.get('peg_ratio')
+                if not peg:
+                    _pe_raw = data.get('pe_ratio')
+                    _eg_raw = data.get('earnings_growth', 0) or 0
+                    if _pe_raw and _eg_raw > 0:
+                        peg = _pe_raw / (_eg_raw * 100)
                 roe   = data.get('roe', 0) or 0
                 npm   = data.get('profit_margin', 0) or 0
                 opm   = data.get('operating_margin', 0) or 0
@@ -2088,12 +2189,15 @@ with the histogram <strong>{macd_trend}</strong> — suggesting {'building' if m
                 if fund_score >= 70:
                     f_stance = "**fundamentally strong**"; f_color = "#3fb950"
                     f_outlook = "The business demonstrates durable competitive advantages with solid earnings quality, manageable leverage, and a growth trajectory that justifies current valuation."
-                elif fund_score >= 50:
-                    f_stance = "**fundamentally adequate**"; f_color = "#d29922"
-                    f_outlook = "Core financials are sound but exhibit pockets of weakness. Investors should monitor margin trends and balance sheet developments before expanding positions."
+                elif fund_score >= 55:
+                    f_stance = "**fundamentally sound**"; f_color = "#3fb950"
+                    f_outlook = "Core financials are solid with most metrics in acceptable ranges. The business generates adequate returns on capital, though some areas warrant monitoring."
+                elif fund_score >= 40:
+                    f_stance = "**fundamentally mixed**"; f_color = "#d29922"
+                    f_outlook = "Strengths and weaknesses coexist. Some financial dimensions are adequate while others lag benchmarks — monitor for improving or deteriorating trends."
                 else:
                     f_stance = "**fundamentally challenged**"; f_color = "#f85149"
-                    f_outlook = "Financial metrics lag sector benchmarks across multiple dimensions. Valuation may reflect distress; thorough due diligence is essential."
+                    f_outlook = "Financial metrics lag sector benchmarks across multiple dimensions. Thorough due diligence is essential before establishing a position."
 
                 val_comment = (f"trading at {pe:.1f}x trailing earnings" if pe else "P/E not available")
                 roe_comment = (f"return on equity of {roe*100:.1f}%" if roe else "ROE not available")
@@ -2103,39 +2207,14 @@ with the histogram <strong>{macd_trend}</strong> — suggesting {'building' if m
 <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px 22px;margin-bottom:6px;">
 <p style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px 0;">Fundamental Analysis Overview</p>
 <p style="color:#c9d1d9;line-height:1.8;margin:0;font-size:14px;">
-<strong>{data['name']} ({data['ticker']})</strong> is assessed as 
-{f_stance.replace("**","<strong>").replace("**","</strong>")}
- with a composite fundamental score of <strong style="color:{f_color};">{fund_score:.0f}/100</strong> 
+<strong>{data['name']} ({data['ticker']})</strong> is assessed as
+<strong style="color:{f_color};">{f_stance.replace('**','')}</strong>
+ with a composite fundamental score of <strong style="color:{f_color};">{fund_score:.0f}/100</strong> (50 = neutral)
 across valuation, profitability, growth, and financial health dimensions.
-The stock is currently {val_comment}, 
+The stock is currently {val_comment},
 posting a {roe_comment}, and generating {fcf_comment}.
 {f_outlook}
 </p></div>""", unsafe_allow_html=True)
-
-                # Dynamic overview narrative
-                _val_score = fund_analysis['breakdown']['valuation']['score']
-                _val_max = fund_analysis['breakdown']['valuation']['max']
-                _prof_score = fund_analysis['breakdown']['profitability']['score']
-                _val_pct = (_val_score / _val_max * 100) if _val_max else 0
-                _prof_pct = (_prof_score / fund_analysis['breakdown']['profitability']['max'] * 100) if fund_analysis['breakdown']['profitability']['max'] else 0
-
-                if _val_pct < -10 and _prof_pct > 60:
-                    _fund_overview = (f"{data['name']} is a high-quality business trading at a premium valuation — "
-                                      f"strong profitability and growth are offset by stretched multiples. "
-                                      f"The investment risk is valuation, not business quality.")
-                elif _val_pct < 0 and _prof_pct > 40:
-                    _fund_overview = (f"{data['name']} shows solid fundamentals with elevated valuation multiples. "
-                                      f"Investors are paying a growth premium — justified by the profitability profile "
-                                      f"but leaves limited margin of safety.")
-                elif fund_analysis['score_pct'] >= 40:
-                    _fund_overview = (f"{data['name']} demonstrates strong fundamentals across valuation, "
-                                      f"profitability, and growth dimensions.")
-                elif fund_analysis['score_pct'] >= 10:
-                    _fund_overview = (f"{data['name']} shows solid fundamentals with some areas to monitor.")
-                else:
-                    _fund_overview = (f"{data['name']} faces fundamental headwinds across one or more dimensions.")
-
-                st.info(_fund_overview)
 
                 # ── 2. DIMENSION SCORE CARDS ─────────────────────────────────
                 st.markdown("##### Dimensional Breakdown")
@@ -2429,7 +2508,7 @@ also most assumption-dependent approach. A convergence of models above the curre
       <div style="font-size:15px;color:#c9d1d9;margin-top:10px;">{recommendation['trade_decision']}</div>
       <div style="margin-top:14px;">
         <span style="background:#0d1117;border:1px solid {ac};border-radius:20px;padding:5px 16px;font-size:12px;color:{ac};font-weight:600;">
-          Composite Score: {recommendation['combined_score']:.0f} / 100
+          Composite Score: {recommendation['combined_score']:.0f} / 100 (50 = neutral)
         </span>
       </div>
     </div>
@@ -2467,12 +2546,13 @@ also most assumption-dependent approach. A convergence of models above the curre
                 st.markdown("##### Expected Returns by Time Horizon")
                 st.markdown("""
 <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px 16px;margin-bottom:10px;font-size:13px;color:#c9d1d9;line-height:1.7;">
-Forecasted returns are derived from a multi-factor model integrating technical momentum scores, fundamental
-valuation gaps, analyst consensus price targets, and historical mean-reversion patterns.
-<strong>Point Estimate</strong> is the probability-weighted expected return.
-<strong>80% Range</strong> is the confidence interval. <strong>Confidence</strong> reflects signal convergence
-across independent analytical frameworks — short-horizon estimates are more technically driven while
-long-horizon estimates weight intrinsic fundamental value more heavily.
+Forecasted returns are synthesized from <strong>four analytical reference lenses</strong>: technical momentum
+(trend & RSI signals), fundamental valuation gap (intrinsic value vs market price), historical mean-reversion
+patterns, and analyst consensus targets. Note: P/E and Forward P/E are correlated inputs and are not treated
+as fully independent signals. <strong>Point Estimate</strong> is the probability-weighted expected return.
+<strong>80% Range</strong> is the confidence interval. <strong>Confidence</strong> reflects convergence
+across lenses — short-horizon estimates are more technically driven while long-horizon estimates weight
+intrinsic fundamental value more heavily.
 </div>""", unsafe_allow_html=True)
 
                 _ret_rows = ""
