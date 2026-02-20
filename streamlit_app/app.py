@@ -152,34 +152,36 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     box-shadow: none !important;
 }
 
-/* ── RUN FULL ANALYSIS (primary — most prominent CTA) ──
+/* ── RUN FULL ANALYSIS (outline style — prominent full-width CTA) ──
    4-layer fallback for Streamlit type="primary" button. ── */
 [data-testid="baseButton-primary"],
 [data-testid="stBaseButton-primary"],
 button[kind="primary"],
 [data-testid="element-container"]:has(.btn-rfa)
 + [data-testid="element-container"] .stButton > button {
-    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%) !important;
-    border: 1.5px solid #4ade80 !important;
-    color: #dcfce7 !important;
+    background: transparent !important;
+    border: 2px solid #4ade80 !important;
+    color: #4ade80 !important;
     padding: 13px 20px !important;
-    font-size: 14px !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.07em !important;
-    text-transform: uppercase !important;
-    box-shadow: 0 2px 12px rgba(22,163,74,0.35), inset 0 1px 0 rgba(255,255,255,0.06) !important;
-    min-height: 48px !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    text-transform: none !important;
+    box-shadow: 0 0 12px rgba(74,222,128,0.2), inset 0 0 0 0 transparent !important;
+    min-height: 50px !important;
     border-radius: 8px !important;
+    transition: background 0.18s ease, color 0.18s ease,
+                box-shadow 0.18s ease, transform 0.15s ease !important;
 }
 [data-testid="baseButton-primary"]:hover,
 [data-testid="stBaseButton-primary"]:hover,
 button[kind="primary"]:hover,
 [data-testid="element-container"]:has(.btn-rfa)
 + [data-testid="element-container"] .stButton > button:hover {
-    background: linear-gradient(135deg, #166534 0%, #15803d 50%, #16a34a 100%) !important;
-    border-color: #86efac !important;
-    color: #fff !important;
-    box-shadow: 0 6px 20px rgba(22,163,74,0.55), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+    background: #4ade80 !important;
+    border-color: #4ade80 !important;
+    color: #052e16 !important;
+    box-shadow: 0 4px 20px rgba(74,222,128,0.45) !important;
     transform: translateY(-1px) !important;
 }
 
