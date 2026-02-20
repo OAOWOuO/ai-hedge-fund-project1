@@ -35,75 +35,88 @@ p, span, label, li, div { color: #c9d1d9 !important; }
    Footer   → text-link override (stHorizontalBlock:has(.ft-nav-section))
    ══════════════════════════════════════════════════════ */
 
-/* ── Base reset for ALL .stButton buttons ── */
-.stButton > button {
-    height: 44px !important;
-    padding: 0 16px !important;
-    border-radius: 12px !important;
+/* ── Base reset for ALL buttons (every selector Streamlit has ever used) ── */
+.stButton > button,
+[data-testid="stBaseButton-secondary"],
+[data-testid="stBaseButton-primary"],
+[data-testid="baseButton-secondary"],
+[data-testid="baseButton-primary"] {
+    min-height: 44px !important;
+    padding: 0 20px !important;
+    border-radius: 8px !important;
     font-weight: 600 !important;
-    font-size: 16px !important;
-    border: 1px solid rgba(255,255,255,0.16) !important;
-    background: rgba(255,255,255,0.04) !important;
-    color: rgba(255,255,255,0.92) !important;
+    font-size: 15px !important;
     box-shadow: none !important;
     text-shadow: none !important;
     transition: background 120ms ease, border-color 120ms ease, transform 60ms ease !important;
     cursor: pointer !important;
 }
 
-/* ══ OUTLINE variant — Enter … CTA buttons (kind="secondary") ══ */
+/* ══ OUTLINE variant — Enter … CTA buttons ══
+   Targets every form Streamlit uses to mark a secondary button        */
 .stButton > button[kind="secondary"],
-button[kind="secondary"] {
+button[kind="secondary"],
+[data-testid="stBaseButton-secondary"],
+[data-testid="baseButton-secondary"] {
     background: transparent !important;
-    border: 1px solid rgba(255,255,255,0.22) !important;
-    color: rgba(255,255,255,0.92) !important;
+    border: 1.5px solid rgba(255,255,255,0.35) !important;
+    color: rgba(255,255,255,0.90) !important;
 }
 .stButton > button[kind="secondary"]:hover,
-button[kind="secondary"]:hover {
-    background: rgba(255,255,255,0.06) !important;
-    border-color: rgba(255,255,255,0.35) !important;
+button[kind="secondary"]:hover,
+[data-testid="stBaseButton-secondary"]:hover,
+[data-testid="baseButton-secondary"]:hover {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.55) !important;
+    color: #ffffff !important;
 }
 .stButton > button[kind="secondary"]:active,
-button[kind="secondary"]:active {
+button[kind="secondary"]:active,
+[data-testid="stBaseButton-secondary"]:active,
+[data-testid="baseButton-secondary"]:active {
     transform: translateY(1px) !important;
     box-shadow: none !important;
 }
 .stButton > button[kind="secondary"]:focus-visible,
-button[kind="secondary"]:focus-visible {
+button[kind="secondary"]:focus-visible,
+[data-testid="stBaseButton-secondary"]:focus-visible,
+[data-testid="baseButton-secondary"]:focus-visible {
     outline: 2px solid rgba(120,170,255,0.55) !important;
     outline-offset: 2px !important;
     box-shadow: none !important;
 }
 
-/* ══ PRIMARY variant — Run Full Analysis (kind="primary") ══ */
+/* ══ PRIMARY variant — Run Full Analysis ══
+   Visibly different: blue-tinted fill + brighter blue border            */
 .stButton > button[kind="primary"],
 button[kind="primary"],
-[data-testid="baseButton-primary"],
-[data-testid="stBaseButton-primary"] {
-    background: rgba(120,170,255,0.16) !important;
-    border: 1px solid rgba(120,170,255,0.55) !important;
-    color: rgba(255,255,255,0.92) !important;
+[data-testid="stBaseButton-primary"],
+[data-testid="baseButton-primary"] {
+    background: rgba(99,130,220,0.20) !important;
+    border: 1.5px solid rgba(120,170,255,0.65) !important;
+    color: rgba(200,220,255,0.95) !important;
 }
 .stButton > button[kind="primary"]:hover,
 button[kind="primary"]:hover,
-[data-testid="baseButton-primary"]:hover,
-[data-testid="stBaseButton-primary"]:hover {
-    background: rgba(120,170,255,0.22) !important;
-    border-color: rgba(120,170,255,0.70) !important;
+[data-testid="stBaseButton-primary"]:hover,
+[data-testid="baseButton-primary"]:hover {
+    background: rgba(99,130,220,0.30) !important;
+    border-color: rgba(120,170,255,0.85) !important;
+    color: #ffffff !important;
     box-shadow: none !important;
 }
 .stButton > button[kind="primary"]:active,
 button[kind="primary"]:active,
-[data-testid="baseButton-primary"]:active,
-[data-testid="stBaseButton-primary"]:active {
+[data-testid="stBaseButton-primary"]:active,
+[data-testid="baseButton-primary"]:active {
     transform: translateY(1px) !important;
     box-shadow: none !important;
 }
 .stButton > button[kind="primary"]:focus-visible,
 button[kind="primary"]:focus-visible,
-[data-testid="baseButton-primary"]:focus-visible,
-[data-testid="stBaseButton-primary"]:focus-visible {
-    outline: 2px solid rgba(120,170,255,0.70) !important;
+[data-testid="stBaseButton-primary"]:focus-visible,
+[data-testid="baseButton-primary"]:focus-visible {
+    outline: 2px solid rgba(120,170,255,0.80) !important;
     outline-offset: 2px !important;
     box-shadow: none !important;
 }
