@@ -247,6 +247,129 @@ p, span, label, li, div { color: #c9d1d9 !important; }
     transition: color 0.2s;
 }
 .ft-about-link:hover { color: #e2e8f0 !important; }
+
+/* ═══════════════════════════════════════
+   INTERACTIVE ELEMENT SYSTEM (0.1)
+   Consistent border / hover / active / focus across all clickable UI.
+   Footer buttons are excluded (handled above by .ft-nav-section overrides).
+   ═══════════════════════════════════════ */
+
+/* ── Tabs ── */
+[data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 2px solid #21262d !important;
+    gap: 2px !important;
+    padding-bottom: 0 !important;
+}
+[data-baseweb="tab"] {
+    background: transparent !important;
+    border: 1px solid #30363d !important;
+    border-bottom: none !important;
+    border-radius: 6px 6px 0 0 !important;
+    color: #8b949e !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 8px 18px !important;
+    margin-bottom: -2px !important;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease !important;
+    cursor: pointer !important;
+}
+[data-baseweb="tab"]:hover {
+    border-color: #58a6ff !important;
+    color: #c9d1d9 !important;
+    background: #161b22 !important;
+}
+[data-baseweb="tab"][aria-selected="true"] {
+    background: #161b22 !important;
+    border-color: #58a6ff !important;
+    border-bottom-color: #161b22 !important;
+    color: #58a6ff !important;
+    font-weight: 600 !important;
+}
+[data-baseweb="tab"]:focus-visible {
+    outline: 2px solid #58a6ff !important;
+    outline-offset: 2px !important;
+}
+/* Hide the sliding underline highlight — we use border instead */
+[data-baseweb="tab-highlight"] { background: transparent !important; height: 0 !important; }
+
+/* ── Text inputs & form inputs ── */
+[data-testid="stTextInput"] > div > div,
+[data-baseweb="base-input"] {
+    background: #0d1117 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+}
+[data-testid="stTextInput"] > div > div:focus-within,
+[data-baseweb="base-input"]:focus-within {
+    border-color: #58a6ff !important;
+    box-shadow: 0 0 0 3px rgba(88,166,255,0.15) !important;
+}
+[data-testid="stTextInput"] input {
+    color: #e6edf3 !important;
+    background: transparent !important;
+}
+[data-testid="stTextInput"] input::placeholder { color: #6e7681 !important; }
+
+/* ── Radio buttons (e.g. chart type toggle) ── */
+[data-testid="stRadio"] > div {
+    display: flex !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+}
+[data-testid="stRadio"] label {
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    padding: 5px 14px !important;
+    cursor: pointer !important;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease !important;
+    color: #8b949e !important;
+}
+[data-testid="stRadio"] label:hover {
+    border-color: #58a6ff !important;
+    color: #c9d1d9 !important;
+    background: #161b22 !important;
+}
+/* Active/selected radio state */
+[data-testid="stRadio"] label:has(input:checked) {
+    border-color: #58a6ff !important;
+    background: rgba(88,166,255,0.08) !important;
+    color: #58a6ff !important;
+}
+[data-testid="stRadio"] label:focus-within {
+    outline: 2px solid #58a6ff !important;
+    outline-offset: 2px !important;
+}
+/* Hide the default radio circle — the border label IS the control */
+[data-testid="stRadio"] [data-testid="stMarkdownContainer"] { display: none !important; }
+[data-testid="stRadio"] label > div:first-child { display: none !important; }
+
+/* ── Buttons: enhanced focus + active states ── */
+.stButton > button:focus-visible {
+    outline: 2px solid #60a5fa !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 4px rgba(96,165,250,0.2) !important;
+}
+.stButton > button:active {
+    transform: scale(0.975) !important;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.35) !important;
+    filter: brightness(0.92) !important;
+}
+
+/* ── Selectbox / dropdown ── */
+[data-testid="stSelectbox"] > div > div {
+    background: #0d1117 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    color: #e6edf3 !important;
+    transition: border-color 0.18s ease !important;
+}
+[data-testid="stSelectbox"] > div > div:focus-within,
+[data-testid="stSelectbox"] > div > div:hover {
+    border-color: #58a6ff !important;
+}
+
 </style>""", unsafe_allow_html=True)
 
 

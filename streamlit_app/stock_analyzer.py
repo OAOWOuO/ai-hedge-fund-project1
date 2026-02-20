@@ -1686,9 +1686,14 @@ def show_stock_analyzer():
 </div>""", unsafe_allow_html=True)
 
         _chat_box = st.container(height=320)
+        # Track whether we had messages BEFORE this render pass so we can
+        # clear the empty-state placeholder immediately on first submission.
+        _had_msgs_before = bool(st.session_state[_chat_key])
+        _empty_state_ph = None
         with _chat_box:
-            if not st.session_state[_chat_key]:
-                st.markdown(
+            if not _had_msgs_before:
+                _empty_state_ph = st.empty()
+                _empty_state_ph.markdown(
                     "<div style='color:#6e7681;font-size:12px;text-align:center;padding-top:36px;'>"
                     "No messages yet<br>"
                     "<span style='font-size:11px;'>Ask a question above to get started.</span></div>",
@@ -1707,6 +1712,10 @@ def show_stock_analyzer():
         # ── FORM SUBMISSION PROCESSING ───────────────────────────────────────────
         if _submitted and _prompt:
             st.session_state[_chat_key].append({"role": "user", "content": _prompt})
+            # Clear the "No messages yet" placeholder immediately so it doesn't
+            # coexist with the first real message in the same render pass.
+            if _empty_state_ph is not None:
+                _empty_state_ph.empty()
             with _chat_box:
                 with st.chat_message("user"):
                     st.markdown(_prompt)
