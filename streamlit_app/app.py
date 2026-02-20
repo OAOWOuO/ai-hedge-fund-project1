@@ -25,29 +25,24 @@ st.markdown("""<style>
 h1, h2, h3, h4 { color: #e6edf3 !important; font-weight: 600 !important; }
 p, span, label, li, div { color: #c9d1d9 !important; }
 
-/* ══════════════════════════════════════════════════
-   BUTTON DESIGN SYSTEM — v5
-   Home CTAs → HTML <a> links (version-immune, no CSS battles).
-   Back / RFA / Clear Chat → 4-layer data-testid fallback:
-     [data-testid="baseButton-*"]    Streamlit ≥ 1.36
-     [data-testid="stBaseButton-*"]  Streamlit 1.32–1.35
-     button[kind="*"]                attribute prop fallback
-     .stButton > button              class-based last resort
-   Footer buttons overridden separately (.ft-nav-section).
-   ══════════════════════════════════════════════════ */
-
 /* ══════════════════════════════════
    BUTTON SYSTEM — Bloomberg Terminal style
    Principle: recognisable as button, not decorative.
    No glow. No gradients. No large coloured fill.
    Crisp 1 px border, restrained hover, subtle active.
+   Each home CTA is scoped by TWO hooks (tool-card-* AND btn-cta-*)
+   so the selector fires even if Streamlit nests the DOM differently.
+   Footer buttons overridden separately (.ft-nav-section).
    ══════════════════════════════════ */
 
 /* ── Shared base for all non-footer CTA & action buttons ── */
 [data-testid="stVerticalBlock"]:has(.tool-card-green)  .stButton > button,
 [data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button,
 [data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button,
-[data-testid="stVerticalBlock"]:has(.btn-back)         .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-cta-portfolio) .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-cta-analyzer)  .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-cta-caseqa)    .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-back)          .stButton > button,
 [data-testid="baseButton-primary"],
 [data-testid="stBaseButton-primary"],
 button[kind="primary"],
@@ -66,67 +61,82 @@ button[kind="primary"],
 }
 
 /* ── HOME CTA — Portfolio Allocator (Emerald outline) ── */
-[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button {
+[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-cta-portfolio) .stButton > button {
     background: transparent !important;
     border: 1px solid #1e5c3a !important;
     color: #6ee7b7 !important;
     min-height: 44px !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button:hover {
+[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button:hover,
+[data-testid="stVerticalBlock"]:has(.btn-cta-portfolio) .stButton > button:hover {
     background: rgba(16,185,129,0.06) !important;
     border-color: #2d8a55 !important;
     color: #a7f3d0 !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button:active {
+[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button:active,
+[data-testid="stVerticalBlock"]:has(.btn-cta-portfolio) .stButton > button:active {
     transform: translateY(1px) !important;
     background: rgba(16,185,129,0.1) !important;
+    box-shadow: none !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button:focus-visible {
-    outline: 2px solid #1e5c3a !important;
+[data-testid="stVerticalBlock"]:has(.tool-card-green) .stButton > button:focus-visible,
+[data-testid="stVerticalBlock"]:has(.btn-cta-portfolio) .stButton > button:focus-visible {
+    outline: 2px solid #2d8a55 !important;
     outline-offset: 2px !important;
     box-shadow: none !important;
 }
 
 /* ── HOME CTA — Stock Analyzer (Indigo outline) ── */
-[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button {
+[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-cta-analyzer) .stButton > button {
     background: transparent !important;
     border: 1px solid #2e2a6e !important;
     color: #a5b4fc !important;
     min-height: 44px !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button:hover {
+[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button:hover,
+[data-testid="stVerticalBlock"]:has(.btn-cta-analyzer) .stButton > button:hover {
     background: rgba(99,102,241,0.06) !important;
     border-color: #4338ca !important;
     color: #c7d2fe !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button:active {
+[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button:active,
+[data-testid="stVerticalBlock"]:has(.btn-cta-analyzer) .stButton > button:active {
     transform: translateY(1px) !important;
     background: rgba(99,102,241,0.1) !important;
+    box-shadow: none !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button:focus-visible {
-    outline: 2px solid #2e2a6e !important;
+[data-testid="stVerticalBlock"]:has(.tool-card-indigo) .stButton > button:focus-visible,
+[data-testid="stVerticalBlock"]:has(.btn-cta-analyzer) .stButton > button:focus-visible {
+    outline: 2px solid #4338ca !important;
     outline-offset: 2px !important;
     box-shadow: none !important;
 }
 
 /* ── HOME CTA — Case Q&A (Violet outline) ── */
-[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button {
+[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button,
+[data-testid="stVerticalBlock"]:has(.btn-cta-caseqa) .stButton > button {
     background: transparent !important;
     border: 1px solid #3b1f72 !important;
     color: #c4b5fd !important;
     min-height: 44px !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button:hover {
+[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button:hover,
+[data-testid="stVerticalBlock"]:has(.btn-cta-caseqa) .stButton > button:hover {
     background: rgba(139,92,246,0.06) !important;
     border-color: #5b21b6 !important;
     color: #ddd6fe !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button:active {
+[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button:active,
+[data-testid="stVerticalBlock"]:has(.btn-cta-caseqa) .stButton > button:active {
     transform: translateY(1px) !important;
     background: rgba(139,92,246,0.1) !important;
+    box-shadow: none !important;
 }
-[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button:focus-visible {
-    outline: 2px solid #3b1f72 !important;
+[data-testid="stVerticalBlock"]:has(.tool-card-purple) .stButton > button:focus-visible,
+[data-testid="stVerticalBlock"]:has(.btn-cta-caseqa) .stButton > button:focus-visible {
+    outline: 2px solid #5b21b6 !important;
     outline-offset: 2px !important;
     box-shadow: none !important;
 }
@@ -551,16 +561,15 @@ button[kind="primary"]:focus-visible,
 [data-testid="stRadio"] [data-testid="stMarkdownContainer"] { display: none !important; }
 [data-testid="stRadio"] label > div:first-child { display: none !important; }
 
-/* ── Buttons: enhanced focus + active states ── */
+/* ── Generic button reset: no glow on focus, clean active ── */
 .stButton > button:focus-visible {
-    outline: 2px solid #60a5fa !important;
+    outline: 2px solid #30363d !important;
     outline-offset: 2px !important;
-    box-shadow: 0 0 0 4px rgba(96,165,250,0.2) !important;
+    box-shadow: none !important;
 }
 .stButton > button:active {
-    transform: scale(0.975) !important;
-    box-shadow: inset 0 2px 6px rgba(0,0,0,0.35) !important;
-    filter: brightness(0.92) !important;
+    transform: translateY(1px) !important;
+    box-shadow: none !important;
 }
 
 /* ── Selectbox / dropdown ── */
