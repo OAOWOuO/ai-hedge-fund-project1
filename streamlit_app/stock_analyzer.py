@@ -1341,6 +1341,42 @@ def forecast_returns(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valua
     else:
         annual_vol = 25  # Default assumption
 
+    # Pre-compute confidence metrics (signal consistency + valuation alignment)
+    _tech_disp_fc = (tech_analysis['score_pct'] + 100) / 2
+    _fund_disp_fc = fund_analysis.get('display_score', max(0.0, min(100.0, 50.0 + fund_analysis['score_pct'] * 0.5)))
+    _combined_disp_fc = (_tech_disp_fc + _fund_disp_fc) / 2
+    _dist_from_neutral = abs(_combined_disp_fc - 50)
+
+    # Signal consistency: fraction of signals pointing in one direction
+    _n_bull_fc = sum(1 for s in tech_analysis['signals'] + fund_analysis['signals']
+                     if s.get('signal') in ['BULLISH', 'STRONG', 'UNDERVALUED', 'HIGH GROWTH', 'EXCELLENT'])
+    _n_bear_fc = sum(1 for s in tech_analysis['signals'] + fund_analysis['signals']
+                     if s.get('signal') in ['BEARISH', 'WEAK', 'OVERVALUED', 'DECLINING', 'HIGH RISK', 'LOSS'])
+    _total_sig_fc = _n_bull_fc + _n_bear_fc
+    _signal_consistency = abs(_n_bull_fc - _n_bear_fc) / _total_sig_fc if _total_sig_fc > 0 else 0
+
+    # Valuation alignment: does target direction match score direction?
+    _target_upside_fc = valuation['composite']['upside_mid'] if 'composite' in valuation else 0
+    _score_bullish = _combined_disp_fc > 50
+    _target_bullish = _target_upside_fc > 0
+    _valuation_aligned = (_score_bullish == _target_bullish)
+
+    # Composite confidence score
+    _conf_score = _dist_from_neutral
+    if _signal_consistency > 0.5:
+        _conf_score += 10   # signals predominantly point one way
+    if _valuation_aligned:
+        _conf_score += 5    # score direction matches target direction
+    if abs(_target_upside_fc) > 15:
+        _conf_score += 5    # strong valuation signal (large gap between price and target)
+
+    if _conf_score > 25:
+        _base_confidence = "High"
+    elif _conf_score > 12:
+        _base_confidence = "Medium"
+    else:
+        _base_confidence = "Low"
+
     # Time-scaled forecasts
     forecasts = {}
 
@@ -1356,20 +1392,13 @@ def forecast_returns(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valua
         range_low = point_estimate - period_vol
         range_high = point_estimate + period_vol
 
-        # Confidence based on signal strength (distance from neutral on 0-100 scale)
-        _tech_disp_fc = (tech_analysis['score_pct'] + 100) / 2
-        _fund_disp_fc = fund_analysis.get('display_score', max(0.0, min(100.0, 50.0 + fund_analysis['score_pct'] * 0.5)))
-        _combined_disp_fc = (_tech_disp_fc + _fund_disp_fc) / 2
-        _dist_from_neutral = abs(_combined_disp_fc - 50)
-
-        if _dist_from_neutral > 20:
-            confidence = "High"
-            probability = "65-75%"
-        elif _dist_from_neutral > 10:
-            confidence = "Medium"
-            probability = "55-65%"
+        # Fix 6: Confidence based on signal consistency, valuation alignment, and directional score
+        confidence = _base_confidence
+        if _base_confidence == "High":
+            probability = "65-75%" if expected_annual >= 0 else "25-35%"
+        elif _base_confidence == "Medium":
+            probability = "55-65%" if expected_annual >= 0 else "35-45%"
         else:
-            confidence = "Low"
             probability = "45-55%"
 
         # Price targets
@@ -1393,7 +1422,8 @@ def forecast_returns(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valua
 
 
 # ============== FINAL RECOMMENDATION ==============
-def generate_recommendation(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valuation: Dict, forecasts: Dict) -> Dict:
+def generate_recommendation(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valuation: Dict, forecasts: Dict,
+                            supports=None, resistances=None) -> Dict:
     """Generate final institutional-grade recommendation."""
     price = data['price']
 
@@ -1438,23 +1468,61 @@ def generate_recommendation(data: Dict, tech_analysis: Dict, fund_analysis: Dict
         sorted_targets = sorted([target_low, target_price, target_high])
         target_low, target_price, target_high = sorted_targets
         upside = (target_price - price) / price * 100
+        upside_high = (target_high - price) / price * 100
     else:
         target_price = price
         upside = 0
         target_low = price * 0.9
         target_high = price * 1.1
+        upside_high = 10.0
+
+    # Fix 1: Override to SELL when base target is >10% below price and bull case offers <5% upside
+    if upside < -10 and upside_high < 5:
+        action = "SELL"
+        action_color = "#ff0000"
+        trade_decision = "REDUCE / AVOID POSITION"
 
     # Key drivers (bullish factors)
     bullish_drivers = []
     bearish_risks = []
+    roe_capital_note = None  # ROE note when buyback-driven (Fix 4)
+
+    roe = data.get('roe', 0) or 0
+    cr = data.get('current_ratio', 0) or 0
 
     for signal in tech_analysis['signals'] + fund_analysis['signals']:
-        if signal.get('signal') in ['BULLISH', 'STRONG', 'UNDERVALUED', 'HIGH GROWTH', 'EXCELLENT']:
-            bullish_drivers.append(f"{signal.get('metric', signal.get('indicator', 'N/A'))}: {signal.get('detail', '')}")
-        elif signal.get('signal') in ['BEARISH', 'WEAK', 'OVERVALUED', 'DECLINING', 'HIGH RISK', 'LOSS']:
-            bearish_risks.append(f"{signal.get('metric', signal.get('indicator', 'N/A'))}: {signal.get('detail', '')}")
+        metric_name = signal.get('metric', signal.get('indicator', 'N/A'))
+        sig_type = signal.get('signal', '')
 
-    # Rationale
+        if sig_type in ['BULLISH', 'STRONG', 'UNDERVALUED', 'HIGH GROWTH', 'EXCELLENT']:
+            # Fix 4: ROE >100% is buyback-driven — move to capital structure note, not bullish driver
+            if 'ROE' in metric_name and roe * 100 > 100:
+                roe_capital_note = (
+                    f"ROE of {roe*100:.0f}% is largely buyback-driven (aggressive share repurchases "
+                    f"have reduced book equity); reflects capital return policy rather than pure operational efficiency."
+                )
+                continue
+            bullish_drivers.append(f"{metric_name}: {signal.get('detail', '')}")
+
+        elif sig_type in ['BEARISH', 'WEAK', 'OVERVALUED', 'DECLINING', 'HIGH RISK', 'LOSS']:
+            # Fix 3: Exclude Current Ratio from risks when company has strong FCF (cr > 0.5)
+            if 'Current Ratio' in metric_name and cr > 0.5:
+                continue
+            bearish_risks.append(f"{metric_name}: {signal.get('detail', '')}")
+
+    # Fix 2: Valuation description — corrected ternary and escaped $ to prevent LaTeX rendering
+    if upside > 15:
+        valuation_desc = "represents an attractive entry point"
+    elif upside > -10:
+        valuation_desc = "is fairly valued"
+    else:
+        valuation_desc = "appears overvalued relative to intrinsic value"
+
+    capital_note_section = ""
+    if roe_capital_note:
+        capital_note_section = f"\n**Capital Structure Note:**\n{roe_capital_note}\n"
+
+    # Fix 2: Use \$ to prevent Streamlit markdown from rendering dollar signs as LaTeX
     rationale = f"""
 **Investment Thesis:**
 {data['name']} ({data['ticker']}) rates as a **{action}** based on combined technical and fundamental analysis.
@@ -1464,18 +1532,41 @@ def generate_recommendation(data: Dict, tech_analysis: Dict, fund_analysis: Dict
 
 **Key Risks:**
 {''.join(['• ' + r + chr(10) for r in bearish_risks[:3]]) if bearish_risks else '• No significant bearish factors identified'}
-
+{capital_note_section}
 **Valuation:**
-Current price of ${price:.2f} {'represents an attractive entry point' if upside > 15 else 'is fairly valued' if abs(upside) < 10 else 'appears overvalued'} with a target of ${target_price:.2f} ({upside:+.1f}% potential).
+Current price of \${price:.2f} {valuation_desc} with a consensus target of \${target_price:.2f} ({upside:+.1f}% potential). Bull case target: \${target_high:.2f} ({upside_high:+.1f}%).
 """
 
-    # Invalidation criteria
+    # Fix 5: Use actual support/resistance levels from technical analysis
+    support_below = None
+    resistance_above = None
+    if supports:
+        below = [s for s in supports if s < price]
+        if below:
+            support_below = max(below)
+    if resistances:
+        above = [r for r in resistances if r > price]
+        if above:
+            resistance_above = min(above)
+
     if action in ["STRONG BUY", "BUY"]:
-        invalidation = f"Exit if price falls below ${price * 0.9:.2f} (-10%) or if key technical support breaks."
+        if support_below:
+            pct = (support_below / price - 1) * 100
+            invalidation = f"Exit if price breaks below key support at \${support_below:.2f} ({pct:+.1f}%) on a closing basis."
+        else:
+            invalidation = f"Exit if price falls below \${price * 0.9:.2f} (-10%) or if key technical support breaks."
     elif action in ["UNDERPERFORM", "SELL"]:
-        invalidation = f"Reconsider if price breaks above ${price * 1.1:.2f} (+10%) with strong volume."
+        if resistance_above:
+            pct = (resistance_above / price - 1) * 100
+            invalidation = f"Reconsider if price breaks above key resistance at \${resistance_above:.2f} ({pct:+.1f}%) with strong volume."
+        else:
+            invalidation = f"Reconsider if price breaks above \${price * 1.1:.2f} (+10%) with strong volume."
     else:
-        invalidation = "Monitor for decisive breakout above resistance or breakdown below support."
+        if support_below and resistance_above:
+            invalidation = (f"Monitor range \${support_below:.2f} – \${resistance_above:.2f}. "
+                            f"Decisive close outside this band signals next directional move.")
+        else:
+            invalidation = "Monitor for decisive breakout above resistance or breakdown below support."
 
     return {
         'action': action,
@@ -1639,8 +1730,9 @@ def show_stock_analyzer():
         fund_analysis = analyze_fundamentals(data)
         valuation = calculate_valuation(data, fund_analysis)
         forecasts = forecast_returns(data, tech_analysis, fund_analysis, valuation)
-        recommendation = generate_recommendation(data, tech_analysis, fund_analysis, valuation, forecasts)
         supports, resistances = identify_support_resistance(hist)
+        recommendation = generate_recommendation(data, tech_analysis, fund_analysis, valuation, forecasts,
+                                                 supports=supports, resistances=resistances)
 
     # ── TWO-COLUMN LAYOUT: LEFT (input + company info) | RIGHT (analysis tabs) ─
     col_left, col_right = st.columns([1, 2])
