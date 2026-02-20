@@ -100,8 +100,9 @@ def fetch_comprehensive_data(ticker: str) -> Dict:
             "forward_eps": info.get("forwardEps"),
             "book_value": info.get("bookValue"),
             "revenue_per_share": info.get("revenuePerShare"),
-            # Dividends
-            "dividend_yield": info.get("dividendYield", 0),
+            # Dividends — dividendYield from yfinance is already a decimal (0.007 = 0.7%).
+            # Sanity: reject values > 0.15 (15%) or < 0 — these indicate a wrong field or data error.
+            "dividend_yield": (lambda v: v if 0 < v <= 0.15 else None)(info.get("dividendYield") or 0),
             "dividend_rate": info.get("dividendRate", 0),
             "payout_ratio": info.get("payoutRatio"),
             # Analyst data
@@ -1392,14 +1393,20 @@ def forecast_returns(data: Dict, tech_analysis: Dict, fund_analysis: Dict, valua
         range_low = point_estimate - period_vol
         range_high = point_estimate + period_vol
 
-        # Fix 6: Confidence based on signal consistency, valuation alignment, and directional score
+        # Confidence — same tier for all periods, but probability varies by horizon.
+        # Shorter periods have more noise: apply a noise penalty so each row shows a different value.
+        # Rule: _period_noise = {7:10, 30:7, 90:3, 180:0} subtracted from base probability range.
         confidence = _base_confidence
+        _noise = {7: 10, 30: 7, 90: 3, 180: 0}.get(days, 0)
         if _base_confidence == "High":
-            probability = "65-75%" if expected_annual >= 0 else "25-35%"
+            _p_lo, _p_hi = (60, 70) if expected_annual >= 0 else (25, 35)
         elif _base_confidence == "Medium":
-            probability = "55-65%" if expected_annual >= 0 else "35-45%"
-        else:
-            probability = "45-55%"
+            _p_lo, _p_hi = (52, 62) if expected_annual >= 0 else (33, 43)
+        else:  # Low
+            _p_lo, _p_hi = (42, 52) if expected_annual >= 0 else (38, 48)
+        _p_lo = max(5,  _p_lo - _noise)
+        _p_hi = max(10, _p_hi - _noise)
+        probability = f"{_p_lo}-{_p_hi}%"
 
         # Price targets
         price_target = price * (1 + point_estimate / 100)
@@ -1926,7 +1933,7 @@ def show_stock_analyzer():
                 _fpe_ks  = data.get('forward_pe')
                 _eps_ks  = data.get('eps')
                 _rev_ks  = data.get('info', {}).get('totalRevenue', 0) or 0
-                _div_ks  = data.get('info', {}).get('dividendYield', None)
+                _div_ks  = data.get('dividend_yield')   # already sanitized at fetch (None if >15% or <0)
                 _beta_ks = data.get('info', {}).get('beta', None)
                 _div_str = f"{_div_ks*100:.2f}%" if _div_ks else "—"
                 _beta_str = f"{_beta_ks:.2f}" if _beta_ks is not None else "N/A"
@@ -1962,8 +1969,11 @@ def show_stock_analyzer():
                 _cash_fq = data.get('total_cash', 0) or 0
                 _debt_fq = data.get('total_debt', 0) or 0
                 _net_cash = _cash_fq - _debt_fq
-                _net_cash_str = (f"${_net_cash/1e9:.1f}B" if abs(_net_cash) >= 1e9 else f"${_net_cash/1e6:.0f}M") if _net_cash != 0 else "N/A"
+                _net_cash_abs = abs(_net_cash)
+                # Always display magnitude (never negative): label tells the direction
+                _net_cash_str = (f"${_net_cash_abs/1e9:.1f}B" if _net_cash_abs >= 1e9 else f"${_net_cash_abs/1e6:.0f}M") if _net_cash_abs > 0 else "N/A"
                 _net_cash_label = "Net Cash" if _net_cash > 0 else "Net Debt"
+                _net_cash_sub   = "Cash > Debt" if _net_cash > 0 else "Debt > Cash"
                 _fcf_str = (f"${_fcf_fq/1e9:.1f}B" if abs(_fcf_fq) >= 1e9 else f"${_fcf_fq/1e6:.0f}M") if _fcf_fq else "N/A"
 
                 def _margin_color(pct, bench):
@@ -1974,7 +1984,7 @@ def show_stock_analyzer():
                     ("Op. Margin",    f"{_opm_fq*100:.1f}%", "TTM", _margin_color(_opm_fq*100, 15)),
                     ("Net Margin",    f"{_npm_fq*100:.1f}%", "TTM", _margin_color(_npm_fq*100, 10)),
                     ("FCF (TTM)",     _fcf_str,               "Free cash flow", "#3fb950" if _fcf_fq > 0 else "#f85149"),
-                    (_net_cash_label, _net_cash_str,          "Cash minus debt", "#3fb950" if _net_cash > 0 else "#f85149"),
+                    (_net_cash_label, _net_cash_str,          _net_cash_sub,     "#3fb950" if _net_cash > 0 else "#f85149"),
                 ]
                 _fq_cells = "".join(
                     f"<div style='flex:1;min-width:80px;padding:8px 6px;border-right:1px solid #21262d;'>"
